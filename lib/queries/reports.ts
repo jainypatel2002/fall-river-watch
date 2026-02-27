@@ -35,6 +35,11 @@ type ReportDetailResponse = {
   };
 };
 
+type DeleteReportResponse = {
+  ok: true;
+  warning?: string;
+};
+
 export function filtersToKey(filters: ReportFiltersInput) {
   return JSON.stringify(filters);
 }
@@ -99,6 +104,23 @@ export function useResolveMutation(reportId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
+    }
+  });
+}
+
+export function useDeleteReportMutation(reportId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      jsonFetch<DeleteReportResponse>("/api/reports/delete", {
+        method: "POST",
+        body: JSON.stringify({ reportId })
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
+      void queryClient.invalidateQueries({ queryKey: ["reports"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-reports"] });
     }
   });
 }

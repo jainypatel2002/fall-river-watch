@@ -1,12 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { Camera, ChevronLeft, ChevronRight, LoaderCircle, TriangleAlert } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, LoaderCircle, LocateFixed, TriangleAlert } from "lucide-react";
 import { z } from "zod";
+import { LocationSearch } from "@/components/map/LocationSearch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,8 @@ import { useCreateReportMutation } from "@/lib/queries/reports";
 import { createReportSchema, type CreateReportInput } from "@/lib/schemas/report";
 import { INCIDENT_CATEGORIES } from "@/lib/utils/constants";
 import { prettyCategory } from "@/lib/utils/format";
+
+const DEFAULT_REPORT_LOCATION = { lat: 41.7001, lng: -71.155 };
 
 const LocationPickerMap = dynamic(() => import("@/components/map/location-picker-map"), {
   ssr: false,
@@ -33,8 +36,18 @@ const steps = [
 
 type CreateReportFormValues = z.input<typeof createReportSchema>;
 
+type ReportLocation = {
+  lat: number;
+  lng: number;
+};
+
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 90);
+}
+
+function isValidReportLocation(location: ReportLocation | null): location is ReportLocation {
+  if (!location) return false;
+  return Number.isFinite(location.lat) && Number.isFinite(location.lng);
 }
 
 export function NewReportForm() {
@@ -45,6 +58,11 @@ export function NewReportForm() {
 
   const [step, setStep] = useState<(typeof steps)[number]["id"]>(1);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [locationSearchQuery, setLocationSearchQuery] = useState("");
+  const [selectedReportLocation, setSelectedReportLocation] = useState<ReportLocation | null>(DEFAULT_REPORT_LOCATION);
+  const [reportMapCenter, setReportMapCenter] = useState<ReportLocation>(DEFAULT_REPORT_LOCATION);
+  const [isLocating, setIsLocating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<CreateReportFormValues>({
     resolver: zodResolver(createReportSchema),
@@ -53,31 +71,50 @@ export function NewReportForm() {
       severity: 3,
       title: "",
       description: "",
-      location: { lat: 41.7001, lng: -71.155 },
+      location: DEFAULT_REPORT_LOCATION,
       mediaPaths: []
     }
   });
 
-  const currentLocation = form.watch("location");
   const isSuspicious = form.watch("category") === "suspicious_activity";
   const descriptionLength = form.watch("description")?.length ?? 0;
-  const locationError = form.formState.errors.location?.message ?? form.formState.errors.location?.lat?.message;
+  const locationFormError = form.formState.errors.location?.message ?? form.formState.errors.location?.lat?.message;
+  const locationError = locationFormError ?? (!selectedReportLocation ? "Select a location to continue." : undefined);
+
+  const setReportLocation = useCallback(
+    (next: ReportLocation, options?: { shouldDirty?: boolean }) => {
+      if (!Number.isFinite(next.lat) || !Number.isFinite(next.lng)) return;
+
+      setSelectedReportLocation(next);
+      setReportMapCenter(next);
+      form.clearErrors("location");
+      form.setValue("location", next, {
+        shouldDirty: options?.shouldDirty ?? true,
+        shouldValidate: true
+      });
+    },
+    [form]
+  );
 
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        form.setValue("location", {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
+        setReportLocation(
+          {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          },
+          { shouldDirty: false }
+        );
       },
       () => {
         // Keep default fallback coordinates.
       },
       { enableHighAccuracy: true, timeout: 8_000 }
     );
-  }, [form]);
+  }, [setReportLocation]);
 
   const previewUrls = useMemo(() => selectedFiles.map((file) => URL.createObjectURL(file)), [selectedFiles]);
 
@@ -93,32 +130,76 @@ export function NewReportForm() {
       2: ["location"],
       3: []
     };
+
+    if (step === 2 && !isValidReportLocation(selectedReportLocation)) {
+      form.setError("location", { type: "manual", message: "Select a location to continue." });
+      return;
+    }
+
     const valid = await form.trigger(stepValidation[step], { shouldFocus: true });
     if (!valid) return;
     if (step < 3) setStep((prev) => (prev + 1) as 1 | 2 | 3);
   }
 
-  async function onSubmit(values: CreateReportFormValues) {
-    const parsed = createReportSchema.parse(values);
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      uiToast.error("Please sign in to submit a report");
-      router.push("/auth");
+  function handleUseMyLocation() {
+    if (!("geolocation" in navigator)) {
+      uiToast.info("Geolocation unavailable", "Search for a location instead.");
       return;
     }
 
-    if (!values.location) {
-      uiToast.error("Location is required");
-      return;
-    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setReportLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+        setLocationSearchQuery("");
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+        uiToast.info("Location access denied", "Search still works if location permission is denied.");
+      },
+      { enableHighAccuracy: true, timeout: 8_000 }
+    );
+  }
 
-    const reportId = crypto.randomUUID();
-    const mediaPaths: string[] = [];
+  async function finalSubmitReport() {
+    if (step !== 3) return;
+    if (isSubmitting || createMutation.isPending) return;
+    setIsSubmitting(true);
+    let mediaPaths: string[] = [];
 
     try {
+      if (!isValidReportLocation(selectedReportLocation)) {
+        form.setError("location", { type: "manual", message: "Select a location to continue." });
+        setStep(2);
+        return;
+      }
+
+      const valid = await form.trigger(["category", "severity", "title", "description", "location"], { shouldFocus: true });
+      if (!valid) return;
+
+      const values = form.getValues();
+      const parsed = createReportSchema.parse(values);
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        uiToast.error("Please sign in to submit a report");
+        router.push("/auth");
+        return;
+      }
+
+      if (!values.location) {
+        uiToast.error("Location is required");
+        return;
+      }
+
+      const reportId = crypto.randomUUID();
+
       for (const file of selectedFiles) {
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const fileName = sanitizeFileName(`${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
@@ -151,6 +232,8 @@ export function NewReportForm() {
         await supabase.storage.from("report-media").remove(mediaPaths);
       }
       uiToast.error(error instanceof Error ? error.message : "Failed to submit report");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -187,7 +270,7 @@ export function NewReportForm() {
       </CardHeader>
 
       <CardContent>
-        <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
+        <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
           {step === 1 ? (
             <div className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -259,14 +342,37 @@ export function NewReportForm() {
 
           {step === 2 ? (
             <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Location</Label>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={handleUseMyLocation} disabled={isLocating}>
+                  {isLocating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+                  Use my location
+                </Button>
+              </div>
+
+              <LocationSearch
+                value={locationSearchQuery}
+                onChange={setLocationSearchQuery}
+                onSelectLocation={({ lat, lng, label }) => {
+                  setReportLocation({ lat, lng });
+                  setLocationSearchQuery(label);
+                }}
+                getProximity={() => selectedReportLocation ?? reportMapCenter}
+                placeholder="Search location"
+                className="z-[90]"
+              />
+
               <div className="space-y-2">
-                <Label>Location (drag pin to adjust)</Label>
+                <Label>Map (drag pin to adjust)</Label>
                 <LocationPickerMap
-                  value={currentLocation}
-                  onChange={(next) => form.setValue("location", next, { shouldDirty: true, shouldValidate: true })}
+                  selectedLocation={selectedReportLocation}
+                  onLocationChange={(next) => setReportLocation(next)}
+                  onCenterChange={setReportMapCenter}
                 />
                 <p className="text-xs text-[color:var(--muted)]">
-                  Selected: {currentLocation.lat.toFixed(5)}, {currentLocation.lng.toFixed(5)}
+                  {selectedReportLocation
+                    ? `Selected: ${selectedReportLocation.lat.toFixed(5)}, ${selectedReportLocation.lng.toFixed(5)}`
+                    : "Selected: No location yet"}
                 </p>
                 {locationError ? <p className="text-xs text-rose-300">{locationError}</p> : null}
               </div>
@@ -322,13 +428,31 @@ export function NewReportForm() {
             </Button>
 
             {step < 3 ? (
-              <Button type="button" className="gap-1.5" onClick={goToNextStep}>
+              <Button
+                key="continue-step"
+                type="button"
+                className="gap-1.5"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void goToNextStep();
+                }}
+                disabled={step === 2 && !isValidReportLocation(selectedReportLocation)}
+              >
                 Continue
                 <ChevronRight className="h-4 w-4" />
               </Button>
             ) : (
-              <Button type="submit" disabled={createMutation.isPending} className="gap-2">
-                {createMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              <Button
+                key="submit-report"
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void finalSubmitReport();
+                }}
+                disabled={createMutation.isPending || isSubmitting}
+                className="gap-2"
+              >
+                {createMutation.isPending || isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                 Submit Report
               </Button>
             )}

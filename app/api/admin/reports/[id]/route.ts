@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { deleteReportWithCleanup } from "@/lib/server/report-delete";
 import { adminReportUpdateSchema } from "@/lib/schemas/report";
 import { requireAdmin } from "@/lib/supabase/auth";
 
@@ -31,11 +32,13 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
 
   const { id } = await context.params;
 
-  const { error } = await auth.supabase.from("reports").delete().eq("id", id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  const result = await deleteReportWithCleanup(auth.supabase, id);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    warning: result.warning
+  });
 }

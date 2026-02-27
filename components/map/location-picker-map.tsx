@@ -5,39 +5,74 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 type LocationPickerMapProps = {
-  value: { lat: number; lng: number };
-  onChange: (value: { lat: number; lng: number }) => void;
+  selectedLocation: { lat: number; lng: number } | null;
+  onLocationChange: (value: { lat: number; lng: number }) => void;
+  onCenterChange?: (value: { lat: number; lng: number }) => void;
 };
 
-export default function LocationPickerMap({ value, onChange }: LocationPickerMapProps) {
+const FALLBACK_CENTER = { lat: 41.7001, lng: -71.155 };
+const CAMERA_SYNC_EPSILON = 0.0002;
+
+function shouldReduceMotion() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function hasMeaningfulDelta(current: { lat: number; lng: number }, next: { lat: number; lng: number }) {
+  return Math.abs(current.lat - next.lat) > CAMERA_SYNC_EPSILON || Math.abs(current.lng - next.lng) > CAMERA_SYNC_EPSILON;
+}
+
+export default function LocationPickerMap({ selectedLocation, onLocationChange, onCenterChange }: LocationPickerMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const onLocationChangeRef = useRef(onLocationChange);
+  const onCenterChangeRef = useRef(onCenterChange);
+  const initialCenterRef = useRef(selectedLocation ?? FALLBACK_CENTER);
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+  const selectedLat = selectedLocation?.lat;
+  const selectedLng = selectedLocation?.lng;
+
+  useEffect(() => {
+    onLocationChangeRef.current = onLocationChange;
+  }, [onLocationChange]);
+
+  useEffect(() => {
+    onCenterChangeRef.current = onCenterChange;
+  }, [onCenterChange]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !token) return;
 
     mapboxgl.accessToken = token;
 
+    const initialCenter = initialCenterRef.current;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/dark-v11",
-      center: [value.lng, value.lat],
+      center: [initialCenter.lng, initialCenter.lat],
       zoom: 14
     });
 
-    const marker = new mapboxgl.Marker({ draggable: true, color: "#22d3ee" }).setLngLat([value.lng, value.lat]).addTo(map);
+    const marker = new mapboxgl.Marker({ draggable: true, color: "#22d3ee" })
+      .setLngLat([initialCenter.lng, initialCenter.lat])
+      .addTo(map);
 
     marker.on("dragend", () => {
       const coords = marker.getLngLat();
-      onChange({ lat: coords.lat, lng: coords.lng });
+      onLocationChangeRef.current({ lat: coords.lat, lng: coords.lng });
     });
 
     map.on("click", (event) => {
-      const coords = event.lngLat;
-      marker.setLngLat(coords);
-      onChange({ lat: coords.lat, lng: coords.lng });
+      const next = { lat: event.lngLat.lat, lng: event.lngLat.lng };
+      marker.setLngLat([next.lng, next.lat]);
+      onLocationChangeRef.current(next);
+    });
+
+    map.on("moveend", () => {
+      const center = map.getCenter();
+      onCenterChangeRef.current?.({ lat: center.lat, lng: center.lng });
     });
 
     mapRef.current = map;
@@ -48,16 +83,26 @@ export default function LocationPickerMap({ value, onChange }: LocationPickerMap
       mapRef.current = null;
       markerRef.current = null;
     };
-  }, [onChange, token, value.lat, value.lng]);
+  }, [token]);
 
   useEffect(() => {
     const map = mapRef.current;
     const marker = markerRef.current;
-    if (!map || !marker) return;
+    if (!map || !marker || !selectedLocation) return;
 
-    marker.setLngLat([value.lng, value.lat]);
-    map.easeTo({ center: [value.lng, value.lat], duration: 180 });
-  }, [value.lat, value.lng]);
+    marker.setLngLat([selectedLocation.lng, selectedLocation.lat]);
+
+    const mapCenter = map.getCenter();
+    const currentCenter = { lat: mapCenter.lat, lng: mapCenter.lng };
+    if (!hasMeaningfulDelta(currentCenter, selectedLocation)) return;
+
+    map.flyTo({
+      center: [selectedLocation.lng, selectedLocation.lat],
+      zoom: Math.max(14, map.getZoom()),
+      duration: shouldReduceMotion() ? 0 : 620,
+      essential: true
+    });
+  }, [selectedLat, selectedLng, selectedLocation]);
 
   if (!token) {
     return (

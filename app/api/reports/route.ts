@@ -63,6 +63,7 @@ export async function POST(request: Request) {
     if (payload.mediaPaths.length > 0) {
       const rows = payload.mediaPaths.map((storagePath) => ({
         report_id: reportId,
+        uploader_id: auth.user.id,
         storage_path: storagePath,
         media_type: "image" as const
       }));

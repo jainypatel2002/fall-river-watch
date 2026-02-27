@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, CircleAlert, MapPin } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CheckCircle2, CircleAlert, LoaderCircle, MapPin, Trash2 } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/features/status-badge";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { queryKeys } from "@/lib/queries/keys";
-import { useReportDetailQuery, useResolveMutation, useVoteMutation } from "@/lib/queries/reports";
+import { useDeleteReportMutation, useReportDetailQuery, useResolveMutation, useVoteMutation } from "@/lib/queries/reports";
+import { cn } from "@/lib/utils";
 import { formatRelativeTime, prettyCategory } from "@/lib/utils/format";
 
 export function ReportDetail({ reportId }: { reportId: string }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const supabase = useSupabaseBrowser();
   const uiToast = useUiToast();
@@ -21,11 +26,18 @@ export function ReportDetail({ reportId }: { reportId: string }) {
   const detailQuery = useReportDetailQuery(reportId);
   const voteMutation = useVoteMutation(reportId);
   const resolveMutation = useResolveMutation(reportId);
+  const deleteMutation = useDeleteReportMutation(reportId);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   useEffect(() => {
     const channel = supabase
       .channel(`report-${reportId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "reports", filter: `id=eq.${reportId}` }, () => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "report_media", filter: `report_id=eq.${reportId}` }, () => {
         void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "report_votes", filter: `report_id=eq.${reportId}` }, () => {
@@ -43,23 +55,74 @@ export function ReportDetail({ reportId }: { reportId: string }) {
   }
 
   if (detailQuery.error || !detailQuery.data) {
+    const message = (detailQuery.error as Error)?.message ?? "Report not found or deleted.";
+
     return (
-      <p className="rounded-2xl border border-rose-400/40 bg-rose-400/10 p-4 text-sm text-rose-100">
-        {(detailQuery.error as Error)?.message ?? "Report not found"}
-      </p>
+      <Card>
+        <CardHeader>
+          <CardTitle style={{ fontFamily: "var(--font-heading)" }}>Report not found</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="rounded-2xl border border-rose-400/40 bg-rose-400/10 p-4 text-sm text-rose-100">{message}</p>
+          <Link href="/" className="text-sm text-[color:var(--muted)] underline underline-offset-4">
+            Back to map
+          </Link>
+        </CardContent>
+      </Card>
     );
   }
 
   const report = detailQuery.data.report;
   const mediaUrls = report.media.map((item) => supabase.storage.from("report-media").getPublicUrl(item.storage_path).data.publicUrl);
+  const canConfirmDelete = deleteConfirmText.trim() === "DELETE";
+
+  async function handleDeleteReport() {
+    if (!canConfirmDelete || deleteMutation.isPending) return;
+
+    try {
+      const response = await deleteMutation.mutateAsync();
+
+      if (response.warning) {
+        uiToast.info("Report deleted", response.warning);
+      } else {
+        uiToast.success("Report deleted");
+      }
+
+      setDeleteDialogOpen(false);
+      setDeleteConfirmText("");
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      uiToast.error((error as Error).message);
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <Link href="/" className="text-sm text-[color:var(--muted)] underline underline-offset-4">
           Back to map
         </Link>
-        <StatusBadge status={report.status} />
+        <div className="flex items-center gap-2">
+          {report.can_resolve ? (
+            <Link href={`/report/${report.id}/edit`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 px-3")}>
+              Edit
+            </Link>
+          ) : null}
+          {report.can_resolve ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-8 gap-1.5 px-3"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+          ) : null}
+          <StatusBadge status={report.status} />
+        </div>
       </div>
 
       <Card>
@@ -166,6 +229,40 @@ export function ReportDetail({ reportId }: { reportId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (deleteMutation.isPending) return;
+          setDeleteDialogOpen(open);
+          if (!open) setDeleteConfirmText("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this report?</DialogTitle>
+            <DialogDescription>This cannot be undone. Type DELETE to confirm.</DialogDescription>
+          </DialogHeader>
+
+          <Input
+            value={deleteConfirmText}
+            onChange={(event) => setDeleteConfirmText(event.target.value)}
+            placeholder="Type DELETE"
+            autoComplete="off"
+            disabled={deleteMutation.isPending}
+          />
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setDeleteDialogOpen(false)} disabled={deleteMutation.isPending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" className="gap-2" onClick={handleDeleteReport} disabled={!canConfirmDelete || deleteMutation.isPending}>
+              {deleteMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              Delete Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

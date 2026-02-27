@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { AlertCircle, ShieldAlert } from "lucide-react";
 import { LocationSearch } from "@/components/map/LocationSearch";
 import { ReportFab } from "@/components/features/report-fab";
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
 import { useReportsQuery } from "@/lib/queries/reports";
+import { useMapSearchStore } from "@/lib/store/map-search-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { formatDistance, prettyCategory } from "@/lib/utils/format";
 
@@ -46,7 +47,11 @@ export function HomeShell() {
     userLocation,
     geolocationDenied
   } = useUiStore();
-  const [searchTarget, setSearchTarget] = useState<{ id: string; label: string; lat: number; lng: number } | null>(null);
+  const selectedSearchLocation = useMapSearchStore((state) => state.selectedLocation);
+  const searchQuery = useMapSearchStore((state) => state.searchQuery);
+  const setSearchQuery = useMapSearchStore((state) => state.setSearchQuery);
+  const setSelectedLocation = useMapSearchStore((state) => state.setSelectedLocation);
+  const clearSelectedLocation = useMapSearchStore((state) => state.clearSelectedLocation);
 
   const filters = useMemo(
     () => ({
@@ -68,10 +73,15 @@ export function HomeShell() {
   const onSelectLocation = useCallback(
     (location: { id: string; label: string; lat: number; lng: number }) => {
       setSelectedReportId(null);
+      setSelectedLocation({
+        id: location.id,
+        label: location.label,
+        lat: location.lat,
+        lng: location.lng
+      });
       setMapCenter({ lat: location.lat, lng: location.lng });
-      setSearchTarget(location);
     },
-    [setMapCenter, setSelectedReportId]
+    [setMapCenter, setSelectedLocation, setSelectedReportId]
   );
 
   return (
@@ -119,11 +129,17 @@ export function HomeShell() {
             center={mapCenter}
             userLocation={userLocation}
             isActive={activeTab === "map"}
-            searchTarget={searchTarget}
+            searchTarget={selectedSearchLocation}
             onSelectReport={setSelectedReportId}
             onViewportChange={setMapViewport}
           />
-          <LocationSearch proximity={mapCenter} onSelectLocation={onSelectLocation} />
+          <LocationSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSelectLocation={onSelectLocation}
+            onClearSearch={clearSelectedLocation}
+            getProximity={() => mapCenter}
+          />
 
           {selectedReport ? (
             <Link href={`/report/${selectedReport.id}`}>

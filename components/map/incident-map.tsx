@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -20,7 +20,7 @@ type IncidentMapProps = {
   center: { lat: number; lng: number };
   userLocation: { lat: number; lng: number } | null;
   isActive?: boolean;
-  searchTarget?: { id: string; label: string; lat: number; lng: number } | null;
+  searchTarget?: SearchTarget | null;
   onSelectReport: (id: string) => void;
   onViewportChange: (viewport: {
     center: { lat: number; lng: number };
@@ -28,10 +28,19 @@ type IncidentMapProps = {
   }) => void;
 };
 
+type SearchTarget = {
+  id: string;
+  label: string;
+  lng: number;
+  lat: number;
+};
+
 const SOURCE_ID = "reports-source";
 const LAYER_CLUSTERS = "clusters";
 const LAYER_CLUSTER_COUNT = "cluster-count";
 const LAYER_POINTS = "unclustered-point";
+const SEARCH_PIN_SOURCE_ID = "search-pin-source";
+const SEARCH_PIN_LAYER_ID = "search-pin-layer";
 const VIEWPORT_DEBOUNCE_MS = 280;
 const CAMERA_SYNC_EPSILON = 0.0004;
 
@@ -43,6 +52,41 @@ function shouldReduceMotion() {
 function normalizeLongitude(value: number) {
   const normalized = ((((value + 180) % 360) + 360) % 360) - 180;
   return normalized === -180 ? 180 : normalized;
+}
+
+function isFiniteCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isValidPoint(point: { lng: unknown; lat: unknown } | null | undefined): point is { lng: number; lat: number } {
+  if (!point) return false;
+  return isFiniteCoordinate(point.lng) && isFiniteCoordinate(point.lat);
+}
+
+function buildSearchPinGeoJson(target: SearchTarget | null): GeoJSON.FeatureCollection<GeoJSON.Point, GeoJSON.GeoJsonProperties> {
+  if (!target || !isValidPoint(target)) {
+    return {
+      type: "FeatureCollection",
+      features: []
+    };
+  }
+
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [target.lng, target.lat]
+        },
+        properties: {
+          id: target.id,
+          label: target.label
+        }
+      }
+    ]
+  };
 }
 
 function hasMeaningfulCenterDelta(current: { lat: number; lng: number }, next: { lat: number; lng: number }) {
@@ -66,20 +110,23 @@ export default function IncidentMap({
   onSelectReport,
   onViewportChange
 }: IncidentMapProps) {
+  const centerLat = center.lat;
+  const centerLng = center.lng;
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const moveEndDebounceRef = useRef<number | null>(null);
   const resizeRafRef = useRef<number | null>(null);
+  const isMapLoadedRef = useRef(false);
+  const pendingSearchTargetRef = useRef<SearchTarget | null>(null);
+  const lastAppliedSearchTargetIdRef = useRef<string | null>(null);
   const geoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, GeoJSON.GeoJsonProperties>>({
     type: "FeatureCollection",
     features: []
   });
   const onSelectReportRef = useRef(onSelectReport);
   const onViewportChangeRef = useRef(onViewportChange);
-  const lastSearchTargetIdRef = useRef<string | null>(null);
   const initialCenterRef = useRef(center);
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -103,6 +150,34 @@ export default function IncidentMap({
     }),
     [reports]
   );
+
+  const warnInvalidPoint = useCallback((reason: string, point: unknown) => {
+    if (process.env.NODE_ENV !== "development") return;
+    console.warn(`[IncidentMap] ${reason}`, point);
+  }, []);
+
+  const flyToLocation = useCallback((point: { lng: number; lat: number }, zoom?: number) => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+    if (!isValidPoint(point)) {
+      warnInvalidPoint("Skipping flyTo due to invalid coordinates", point);
+      return;
+    }
+
+    map.flyTo({
+      center: [point.lng, point.lat],
+      zoom: zoom ?? Math.max(13, map.getZoom()),
+      duration: shouldReduceMotion() ? 0 : 700,
+      essential: true
+    });
+  }, [warnInvalidPoint]);
+
+  const updateSearchPin = useCallback((target: SearchTarget | null) => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+    const source = map.getSource(SEARCH_PIN_SOURCE_ID) as GeoJSONSource | undefined;
+    source?.setData(buildSearchPinGeoJson(target));
+  }, []);
 
   useEffect(() => {
     onSelectReportRef.current = onSelectReport;
@@ -188,6 +263,11 @@ export default function IncidentMap({
         }
       });
 
+      map.addSource(SEARCH_PIN_SOURCE_ID, {
+        type: "geojson",
+        data: buildSearchPinGeoJson(null)
+      });
+
       map.addLayer({
         id: LAYER_CLUSTER_COUNT,
         type: "symbol",
@@ -224,6 +304,18 @@ export default function IncidentMap({
           "circle-radius": 8.5,
           "circle-stroke-width": 1.8,
           "circle-stroke-color": "#ecfeff"
+        }
+      });
+
+      map.addLayer({
+        id: SEARCH_PIN_LAYER_ID,
+        type: "circle",
+        source: SEARCH_PIN_SOURCE_ID,
+        paint: {
+          "circle-color": "#d946ef",
+          "circle-radius": 9,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#fdf4ff"
         }
       });
 
@@ -285,6 +377,15 @@ export default function IncidentMap({
           .addTo(map);
       });
 
+      isMapLoadedRef.current = true;
+      if (pendingSearchTargetRef.current) {
+        const pendingTarget = pendingSearchTargetRef.current;
+        pendingSearchTargetRef.current = null;
+        updateSearchPin(pendingTarget);
+        flyToLocation(pendingTarget);
+        lastAppliedSearchTargetIdRef.current = pendingTarget.id;
+      }
+
       emitViewport();
       map.resize();
     };
@@ -308,14 +409,15 @@ export default function IncidentMap({
       resizeObserver.disconnect();
       popupRef.current?.remove();
       userMarkerRef.current?.remove();
-      searchMarkerRef.current?.remove();
       map.remove();
       mapRef.current = null;
+      isMapLoadedRef.current = false;
       userMarkerRef.current = null;
-      searchMarkerRef.current = null;
       popupRef.current = null;
+      pendingSearchTargetRef.current = null;
+      lastAppliedSearchTargetIdRef.current = null;
     };
-  }, [token]);
+  }, [flyToLocation, token, updateSearchPin]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -341,31 +443,41 @@ export default function IncidentMap({
   }, [reports, selectedReportId]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !searchTarget) return;
-    if (lastSearchTargetIdRef.current === searchTarget.id) return;
-    lastSearchTargetIdRef.current = searchTarget.id;
-
-    if (!searchMarkerRef.current) {
-      searchMarkerRef.current = new mapboxgl.Marker({ color: "#d946ef" }).addTo(map);
+    if (!searchTarget) {
+      lastAppliedSearchTargetIdRef.current = null;
+      pendingSearchTargetRef.current = null;
+      updateSearchPin(null);
+      return;
     }
-    searchMarkerRef.current.setLngLat([searchTarget.lng, searchTarget.lat]);
 
-    map.flyTo({
-      center: [searchTarget.lng, searchTarget.lat],
-      zoom: Math.max(13, map.getZoom()),
-      duration: shouldReduceMotion() ? 0 : 700,
-      essential: true
-    });
-  }, [searchTarget]);
+    if (!isValidPoint(searchTarget)) {
+      warnInvalidPoint("Skipping search target because coordinates are invalid", searchTarget);
+      return;
+    }
+
+    if (lastAppliedSearchTargetIdRef.current === searchTarget.id) return;
+
+    if (!isMapLoadedRef.current) {
+      pendingSearchTargetRef.current = searchTarget;
+      return;
+    }
+
+    updateSearchPin(searchTarget);
+    flyToLocation(searchTarget);
+    lastAppliedSearchTargetIdRef.current = searchTarget.id;
+  }, [flyToLocation, searchTarget, updateSearchPin, warnInvalidPoint]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (!isFiniteCoordinate(centerLat) || !isFiniteCoordinate(centerLng)) {
+      warnInvalidPoint("Skipping center sync because center is invalid", { lat: centerLat, lng: centerLng });
+      return;
+    }
 
     const mapCenter = map.getCenter();
     const current = { lat: mapCenter.lat, lng: normalizeLongitude(mapCenter.lng) };
-    const next = { lat: center.lat, lng: normalizeLongitude(center.lng) };
+    const next = { lat: centerLat, lng: normalizeLongitude(centerLng) };
     if (!hasMeaningfulCenterDelta(current, next)) return;
 
     map.easeTo({
@@ -373,7 +485,7 @@ export default function IncidentMap({
       duration: shouldReduceMotion() ? 0 : 260,
       essential: true
     });
-  }, [center.lat, center.lng]);
+  }, [centerLat, centerLng, warnInvalidPoint]);
 
   useEffect(() => {
     const map = mapRef.current;
