@@ -1,6 +1,9 @@
 -- Extensions
-create extension if not exists postgis;
-create extension if not exists pgcrypto;
+create extension if not exists postgis with schema public;
+create extension if not exists pgcrypto with schema public;
+
+-- Ensure PostGIS symbols resolve if the extension was previously installed in `extensions`.
+set search_path = public, extensions;
 
 -- Enums via CHECK constraints as requested
 
@@ -100,7 +103,7 @@ returns text
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select role from public.profiles where id = auth.uid();
 $$;
@@ -264,7 +267,7 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   with base as (
     select
@@ -356,7 +359,7 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   with report_base as (
     select

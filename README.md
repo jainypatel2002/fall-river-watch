@@ -13,7 +13,7 @@ A separate Next.js + Supabase app for local incident reporting, map/feed browsin
 
 ## MVP Defaults (Documented Choices)
 
-- Query strategy: reports are loaded by **selected radius around current map center** (not full-city fetch).
+- Query strategy: reports are loaded by **map viewport bounds + selected radius around current center** (not full-city fetch).
 - Realtime strategy: on `reports` / `report_votes` changes, clients **refetch current query filters**.
 - Expiration: reports auto-expire after 24h unless verified via a DB helper function called during API reads/writes.
 - Privacy: `suspicious_activity` uses deterministic ~300m snapped location for map and distance display.

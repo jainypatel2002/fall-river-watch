@@ -4,12 +4,11 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useMemo } from "react";
 import { AlertCircle, ShieldAlert } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
-import { ReportFeed } from "@/components/features/report-feed";
-import { FiltersSheet } from "@/components/features/filters-sheet";
 import { ReportFab } from "@/components/features/report-fab";
+import { ReportFeed } from "@/components/features/report-feed";
 import { StatusBadge } from "@/components/features/status-badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
 import { useReportsQuery } from "@/lib/queries/reports";
@@ -18,7 +17,12 @@ import { formatDistance, prettyCategory } from "@/lib/utils/format";
 
 const IncidentMap = dynamic(() => import("@/components/map/incident-map"), {
   ssr: false,
-  loading: () => <div className="h-[65vh] animate-pulse rounded-xl bg-zinc-200" />
+  loading: () => <div className="shimmer h-[62vh] rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />
+});
+
+const FiltersSheet = dynamic(() => import("@/components/features/filters-sheet").then((module) => module.FiltersSheet), {
+  ssr: false,
+  loading: () => <div className="h-9 w-24 rounded-xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />
 });
 
 export function HomeShell() {
@@ -35,7 +39,8 @@ export function HomeShell() {
     radiusMiles,
     verifiedOnly,
     mapCenter,
-    setMapCenter,
+    mapBounds,
+    setMapViewport,
     userLocation,
     geolocationDenied
   } = useUiStore();
@@ -44,12 +49,13 @@ export function HomeShell() {
     () => ({
       centerLat: mapCenter.lat,
       centerLng: mapCenter.lng,
+      bounds: mapBounds ?? undefined,
       categories,
       timeWindow,
       radiusMiles,
       verifiedOnly
     }),
-    [categories, mapCenter.lat, mapCenter.lng, radiusMiles, timeWindow, verifiedOnly]
+    [categories, mapBounds, mapCenter.lat, mapCenter.lng, radiusMiles, timeWindow, verifiedOnly]
   );
 
   const reportsQuery = useReportsQuery(filters);
@@ -58,39 +64,34 @@ export function HomeShell() {
   const showFallbackNotice = process.env.NODE_ENV === "development" && Boolean(reportsQuery.data?.fallbackUsed);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 pb-20 pt-6 sm:px-6 lg:px-8">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="mx-auto w-full max-w-6xl space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-heading)" }}>
-            Neighborhood Incident Map
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl" style={{ fontFamily: "var(--font-heading)" }}>
+            Live Incident Intelligence
           </h1>
-          <p className="text-sm text-zinc-600">Community reports with public verification.</p>
+          <p className="mt-1 text-sm text-[color:var(--muted)]">Community reports with verification signals and realtime updates.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <FiltersSheet />
-          <Link href="/auth" className="text-sm text-zinc-700 underline underline-offset-4">
-            Account
-          </Link>
-        </div>
+        <FiltersSheet />
       </div>
 
       {geolocationDenied ? (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="flex items-start gap-2 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
           <ShieldAlert className="mt-0.5 h-4 w-4" />
-          <p>Location access was denied. You can still browse reports by moving the map manually.</p>
+          <p>Location access was denied. Move the map manually to pick your search area.</p>
         </div>
       ) : null}
 
       {reportsQuery.error ? (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+        <div className="flex items-center gap-2 rounded-2xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-100">
           <AlertCircle className="h-4 w-4" />
           {(reportsQuery.error as Error).message}
         </div>
       ) : null}
 
       {showFallbackNotice ? (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          Database function missing, using fallback query
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">
+          Database RPC unavailable. Running fallback query mode.
         </div>
       ) : null}
 
@@ -107,19 +108,19 @@ export function HomeShell() {
             center={mapCenter}
             userLocation={userLocation}
             onSelectReport={setSelectedReportId}
-            onCenterChange={setMapCenter}
+            onViewportChange={setMapViewport}
           />
 
           {selectedReport ? (
             <Link href={`/report/${selectedReport.id}`}>
-              <Card className="border-emerald-200 bg-emerald-50/50">
+              <Card>
                 <CardContent className="space-y-2 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-zinc-900">{selectedReport.title || "Incident report"}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[var(--fg)]">{selectedReport.title || "Incident report"}</p>
                     <StatusBadge status={selectedReport.status} />
                   </div>
-                  <p className="text-sm text-zinc-700">{selectedReport.description}</p>
-                  <div className="flex items-center justify-between text-xs text-zinc-600">
+                  <p className="text-sm text-[color:var(--muted)]">{selectedReport.description}</p>
+                  <div className="flex items-center justify-between text-xs text-[color:var(--muted)]">
                     <span>{prettyCategory(selectedReport.category)}</span>
                     <span>{formatDistance(selectedReport.distance_meters)}</span>
                   </div>
@@ -139,6 +140,6 @@ export function HomeShell() {
       </Tabs>
 
       <ReportFab />
-    </main>
+    </section>
   );
 }

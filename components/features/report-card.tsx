@@ -20,19 +20,19 @@ export type ReportCardData = {
 export function ReportCard({ report }: { report: ReportCardData }) {
   return (
     <Link href={`/report/${report.id}`}>
-      <Card className="transition hover:shadow-md">
+      <Card className="hover:border-[rgba(34,211,238,0.45)]">
         <CardContent className="space-y-3 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{prettyCategory(report.category)}</p>
-              <h3 className="text-base font-semibold text-zinc-900">{report.title || "Incident report"}</h3>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">{prettyCategory(report.category)}</p>
+              <h3 className="text-base font-semibold text-[var(--fg)]">{report.title || "Incident report"}</h3>
             </div>
             <StatusBadge status={report.status} />
           </div>
 
-          <p className="line-clamp-2 text-sm text-zinc-700">{report.description}</p>
+          <p className="line-clamp-2 text-sm text-[color:var(--muted)]">{report.description}</p>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-600">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-[color:var(--muted)]">
             <span className="inline-flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />
               Severity {report.severity}
@@ -41,7 +41,7 @@ export function ReportCard({ report }: { report: ReportCardData }) {
             <span>{formatRelativeTime(report.created_at)}</span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-zinc-600">
+          <div className="flex items-center gap-4 text-xs text-[color:var(--muted)]">
             <span className="inline-flex items-center gap-1">
               <ShieldCheck className="h-3.5 w-3.5" />
               {report.confirms} confirm

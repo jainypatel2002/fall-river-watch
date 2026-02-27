@@ -1,4 +1,7 @@
 -- Align RPC signature with frontend named arguments.
+create extension if not exists postgis with schema public;
+set search_path = public, extensions;
+
 drop function if exists public.get_reports_nearby(
   double precision,
   double precision,
@@ -10,10 +13,19 @@ drop function if exists public.get_reports_nearby(
   integer
 );
 
+drop function if exists public.get_reports_nearby(
+  text[],
+  double precision,
+  double precision,
+  integer,
+  double precision,
+  boolean
+);
+
 create or replace function public.get_reports_nearby(
-  p_categories text[] default null,
   p_center_lat double precision,
   p_center_lng double precision,
+  p_categories text[] default null,
   p_hours integer default 24,
   p_radius_miles double precision default 3,
   p_verified_only boolean default false
@@ -21,6 +33,7 @@ create or replace function public.get_reports_nearby(
 returns setof public.reports
 language sql
 stable
+set search_path = public, extensions
 as $$
   select r.*
   from public.reports r
@@ -42,9 +55,9 @@ as $$
 $$;
 
 grant execute on function public.get_reports_nearby(
+  double precision,
+  double precision,
   text[],
-  double precision,
-  double precision,
   integer,
   double precision,
   boolean

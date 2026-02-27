@@ -8,13 +8,21 @@ export async function GET() {
 
   const { data, error } = await auth.supabase
     .from("notification_subscriptions")
-    .select("user_id, channels, radius_miles, categories, quiet_hours, enabled")
+    .select("user_id, channels, radius_miles, categories, quiet_start, quiet_end, enabled")
     .eq("user_id", auth.user.id)
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  return NextResponse.json({ settings: data });
+  const formattedData = data ? {
+    ...data,
+    quiet_hours: {
+      start: data.quiet_start,
+      end: data.quiet_end
+    }
+  } : null;
+
+  return NextResponse.json({ settings: formattedData });
 }
 
 export async function PUT(request: Request) {
@@ -31,7 +39,8 @@ export async function PUT(request: Request) {
         channels: payload.channels,
         radius_miles: payload.radius_miles,
         categories: payload.categories,
-        quiet_hours: payload.quiet_hours,
+        quiet_start: payload.quiet_hours.start,
+        quiet_end: payload.quiet_hours.end,
         enabled: payload.enabled
       },
       { onConflict: "user_id" }

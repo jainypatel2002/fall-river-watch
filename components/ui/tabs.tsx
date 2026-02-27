@@ -11,7 +11,10 @@ function Tabs({ className, ...props }: React.ComponentProps<typeof TabsPrimitive
 function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
   return (
     <TabsPrimitive.List
-      className={cn("inline-flex h-10 items-center justify-center rounded-lg bg-zinc-100 p-1 text-zinc-600", className)}
+      className={cn(
+        "inline-flex h-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[rgba(11,16,29,0.9)] p-1 text-[color:var(--muted)]",
+        className
+      )}
       {...props}
     />
   );
@@ -21,7 +24,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white data-[state=active]:text-zinc-950",
+        "inline-flex items-center justify-center whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-[transform,background-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)] disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-[rgba(22,34,60,0.95)] data-[state=active]:text-[var(--fg)] data-[state=active]:shadow-[inset_0_0_0_1px_rgba(34,211,238,0.35)]",
         className
       )}
       {...props}
@@ -30,7 +33,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 }
 
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
-  return <TabsPrimitive.Content className={cn("mt-2 ring-offset-white", className)} {...props} />;
+  return <TabsPrimitive.Content className={cn("mt-3", className)} {...props} />;
 }
 
 export { Tabs, TabsList, TabsTrigger, TabsContent };

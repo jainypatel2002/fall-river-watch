@@ -11,8 +11,8 @@ export default async function AuthPage() {
   if (user) redirect("/");
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+    <section className="mx-auto w-full max-w-6xl py-6">
       <AuthForm />
-    </main>
+    </section>
   );
 }

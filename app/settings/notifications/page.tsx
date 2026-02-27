@@ -11,8 +11,8 @@ export default async function NotificationSettingsPage() {
   if (!user) redirect("/auth");
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <section className="mx-auto w-full max-w-4xl">
       <NotificationSettingsForm />
-    </main>
+    </section>
   );
 }

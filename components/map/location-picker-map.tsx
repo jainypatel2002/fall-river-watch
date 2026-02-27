@@ -22,12 +22,12 @@ export default function LocationPickerMap({ value, onChange }: LocationPickerMap
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: "mapbox://styles/mapbox/dark-v11",
       center: [value.lng, value.lat],
       zoom: 14
     });
 
-    const marker = new mapboxgl.Marker({ draggable: true, color: "#0f766e" }).setLngLat([value.lng, value.lat]).addTo(map);
+    const marker = new mapboxgl.Marker({ draggable: true, color: "#22d3ee" }).setLngLat([value.lng, value.lat]).addTo(map);
 
     marker.on("dragend", () => {
       const coords = marker.getLngLat();
@@ -56,12 +56,16 @@ export default function LocationPickerMap({ value, onChange }: LocationPickerMap
     if (!map || !marker) return;
 
     marker.setLngLat([value.lng, value.lat]);
-    map.easeTo({ center: [value.lng, value.lat], duration: 250 });
+    map.easeTo({ center: [value.lng, value.lat], duration: 180 });
   }, [value.lat, value.lng]);
 
   if (!token) {
-    return <div className="grid h-72 place-items-center rounded-lg border border-zinc-300 bg-zinc-100 text-sm">Missing `NEXT_PUBLIC_MAPBOX_TOKEN`.</div>;
+    return (
+      <div className="grid h-72 place-items-center rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)]">
+        Missing `NEXT_PUBLIC_MAPBOX_TOKEN`.
+      </div>
+    );
   }
 
-  return <div ref={containerRef} className="h-72 w-full overflow-hidden rounded-lg border border-zinc-200" />;
+  return <div ref={containerRef} className="h-72 w-full overflow-hidden rounded-2xl border border-[var(--border)]" />;
 }

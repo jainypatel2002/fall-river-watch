@@ -49,7 +49,8 @@ export function useReportsQuery(filters: ReportFiltersInput) {
         method: "POST",
         body: JSON.stringify(filters),
         cache: "no-store"
-      })
+      }),
+    placeholderData: (previous) => previous
   });
 }
 

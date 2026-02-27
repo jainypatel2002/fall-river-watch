@@ -13,13 +13,28 @@ export const locationSchema = z.object({
   lng: lngSchema
 });
 
+const boundsSchema = z
+  .object({
+    north: latSchema,
+    south: latSchema,
+    east: lngSchema,
+    west: lngSchema
+  })
+  .refine((bounds) => bounds.north >= bounds.south, {
+    message: "Invalid map bounds"
+  });
+
 export const createReportSchema = z
   .object({
     id: z.string().uuid().optional(),
     category: categorySchema,
-    severity: z.coerce.number().int().min(1).max(5),
-    title: z.string().trim().max(120).optional().or(z.literal("")),
-    description: z.string().trim().min(20).max(500),
+    severity: z.number().int().min(1, "Pick a severity between 1 and 5").max(5, "Pick a severity between 1 and 5"),
+    title: z.string().trim().max(120, "Keep the title under 120 characters").optional().or(z.literal("")),
+    description: z
+      .string()
+      .trim()
+      .min(20, "Add a bit more detail so neighbors can understand what happened.")
+      .max(500, "Description is too long. Keep it under 500 characters."),
     location: locationSchema,
     mediaPaths: z.array(z.string().trim().min(3)).max(3).default([])
   })
@@ -45,10 +60,8 @@ export const reportFiltersSchema = z.object({
     .refine((value) => RADIUS_OPTIONS.includes(value as (typeof RADIUS_OPTIONS)[number]), "Unsupported radius"),
   categories: z.array(categorySchema).default([...INCIDENT_CATEGORIES]),
   verifiedOnly: z.coerce.boolean().default(false),
-  timeWindow: z
-    .string()
-    .refine((value) => TIME_WINDOWS.includes(value as (typeof TIME_WINDOWS)[number]), "Invalid time window")
-    .default("24h")
+  bounds: boundsSchema.optional(),
+  timeWindow: z.enum(TIME_WINDOWS).default("24h")
 });
 
 export const adminReportUpdateSchema = z.object({

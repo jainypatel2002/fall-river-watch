@@ -1,8 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseTimeWindowToHours } from "@/lib/utils/geo";
 
-export async function runReportExpiration(supabase: {
-  rpc: (fn: string, params?: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
-}) {
+export async function runReportExpiration(supabase: Pick<SupabaseClient, "rpc">) {
   const { error } = await supabase.rpc("expire_reports");
   if (error) {
     console.error("expire_reports failed", error.message);

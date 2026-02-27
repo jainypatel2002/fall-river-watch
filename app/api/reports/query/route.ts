@@ -6,6 +6,7 @@ import { reportsQueryResponseSchema } from "@/lib/schemas/api";
 import { getTimeWindowHours, runReportExpiration } from "@/lib/server/reports";
 
 type Point = { lat: number; lng: number };
+type Bounds = { north: number; south: number; east: number; west: number };
 
 type ReportResponseRecord = {
   id: string;
@@ -138,6 +139,14 @@ function haversineMeters(a: Point, b: Point) {
   const term = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
   const arc = 2 * Math.atan2(Math.sqrt(term), Math.sqrt(1 - term));
   return earthRadiusMeters * arc;
+}
+
+function isWithinBounds(point: Point, bounds: Bounds) {
+  if (point.lat > bounds.north || point.lat < bounds.south) return false;
+  if (bounds.west <= bounds.east) {
+    return point.lng >= bounds.west && point.lng <= bounds.east;
+  }
+  return point.lng >= bounds.west || point.lng <= bounds.east;
 }
 
 function normalizeMedia(media: unknown): Array<{ id: string; storage_path: string; media_type: "image" }> {
@@ -336,6 +345,11 @@ export async function POST(request: Request) {
 
     if (!hasDisplayColumns) {
       reports = await hydrateVotesAndMedia(supabase, reports);
+    }
+
+    const bounds = filters.bounds;
+    if (bounds) {
+      reports = reports.filter((report) => isWithinBounds({ lat: report.display_lat, lng: report.display_lng }, bounds));
     }
 
     const validated = reportsQueryResponseSchema.parse({

@@ -1,34 +1,104 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f7ef;
-  --foreground: #10120f;
-  --surface: #ffffff;
-  --muted: #5f645a;
-  --brand: #0f766e;
-  --brand-strong: #115e59;
-  --danger: #be123c;
+  color-scheme: dark;
+  --bg: #07090f;
+  --bg-2: #101625;
+  --fg: #eef2ff;
+  --muted: #9aa4bd;
+  --primary: #22d3ee;
+  --primary-2: #d946ef;
+  --border: rgba(141, 159, 197, 0.28);
+  --ring: rgba(34, 211, 238, 0.6);
+  --shadow-3d: 0 8px 0 rgba(5, 8, 14, 0.95), 0 14px 26px rgba(3, 8, 22, 0.38);
+  --glow: 0 0 0 1px rgba(34, 211, 238, 0.45), 0 0 20px rgba(34, 211, 238, 0.32);
 }
 
 * {
-  border-color: #e4e4e7;
+  border-color: var(--border);
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
 }
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 500px at 0% 0%, rgba(15, 118, 110, 0.15), transparent 60%),
-    radial-gradient(1000px 500px at 100% 100%, rgba(234, 88, 12, 0.08), transparent 55%),
-    var(--background);
-  color: var(--foreground);
+  background: radial-gradient(1200px 600px at -10% -10%, rgba(34, 211, 238, 0.16), transparent 62%),
+    radial-gradient(900px 560px at 105% 0%, rgba(217, 70, 239, 0.15), transparent 58%),
+    linear-gradient(180deg, #06080f 0%, #090d18 54%, #090b12 100%);
+  color: var(--fg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.028) 0,
+    rgba(255, 255, 255, 0.028) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.12;
+  z-index: -1;
+}
+
+a {
+  color: inherit;
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+.surface-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(16, 22, 37, 0.86) 0%, rgba(13, 18, 32, 0.88) 100%);
+  box-shadow: 0 14px 24px rgba(1, 5, 13, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 20%, rgba(125, 138, 167, 0.26) 48%, transparent 80%);
+  animation: shimmer 1.2s linear infinite;
 }
 
 .mapboxgl-popup-content {
   padding: 0;
-  border-radius: 0.75rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(147, 197, 253, 0.32);
+  background: rgba(10, 15, 27, 0.95);
+  color: var(--fg);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
 }
 
 .mapboxgl-popup-close-button {
-  color: #18181b;
+  color: var(--muted);
   padding: 0.25rem 0.5rem;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: rgba(10, 15, 27, 0.95) !important;
+  border-bottom-color: rgba(10, 15, 27, 0.95) !important;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after {
+    animation: none;
+  }
 }
