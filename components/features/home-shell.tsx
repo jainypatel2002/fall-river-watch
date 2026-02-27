@@ -55,6 +55,7 @@ export function HomeShell() {
   const reportsQuery = useReportsQuery(filters);
   const reports = reportsQuery.data?.reports ?? [];
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
+  const showFallbackNotice = process.env.NODE_ENV === "development" && Boolean(reportsQuery.data?.fallbackUsed);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-20 pt-6 sm:px-6 lg:px-8">
@@ -87,7 +88,13 @@ export function HomeShell() {
         </div>
       ) : null}
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "map" | "feed")}> 
+      {showFallbackNotice ? (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Database function missing, using fallback query
+        </div>
+      ) : null}
+
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "map" | "feed")}>
         <TabsList>
           <TabsTrigger value="map">Map</TabsTrigger>
           <TabsTrigger value="feed">Feed</TabsTrigger>

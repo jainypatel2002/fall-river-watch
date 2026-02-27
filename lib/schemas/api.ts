@@ -26,7 +26,8 @@ export const reportRecordSchema = z.object({
 });
 
 export const reportsQueryResponseSchema = z.object({
-  reports: z.array(reportRecordSchema)
+  reports: z.array(reportRecordSchema),
+  fallbackUsed: z.boolean().optional()
 });
 
 export const reportDetailResponseSchema = z.object({

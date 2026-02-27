@@ -24,6 +24,7 @@ type ReportsResponse = {
     disputes: number;
     media: Array<{ id: string; storage_path: string; media_type: "image" }>;
   }>;
+  fallbackUsed?: boolean;
 };
 
 type ReportDetailResponse = {
