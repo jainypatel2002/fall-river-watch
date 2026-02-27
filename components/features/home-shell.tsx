@@ -2,8 +2,9 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AlertCircle, ShieldAlert } from "lucide-react";
+import { LocationSearch } from "@/components/map/LocationSearch";
 import { ReportFab } from "@/components/features/report-fab";
 import { ReportFeed } from "@/components/features/report-feed";
 import { StatusBadge } from "@/components/features/status-badge";
@@ -40,10 +41,12 @@ export function HomeShell() {
     verifiedOnly,
     mapCenter,
     mapBounds,
+    setMapCenter,
     setMapViewport,
     userLocation,
     geolocationDenied
   } = useUiStore();
+  const [searchTarget, setSearchTarget] = useState<{ id: string; label: string; lat: number; lng: number } | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -62,6 +65,14 @@ export function HomeShell() {
   const reports = reportsQuery.data?.reports ?? [];
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
   const showFallbackNotice = process.env.NODE_ENV === "development" && Boolean(reportsQuery.data?.fallbackUsed);
+  const onSelectLocation = useCallback(
+    (location: { id: string; label: string; lat: number; lng: number }) => {
+      setSelectedReportId(null);
+      setMapCenter({ lat: location.lat, lng: location.lng });
+      setSearchTarget(location);
+    },
+    [setMapCenter, setSelectedReportId]
+  );
 
   return (
     <section className="mx-auto w-full max-w-6xl space-y-5">
@@ -101,15 +112,18 @@ export function HomeShell() {
           <TabsTrigger value="feed">Feed</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="map" className="space-y-3">
+        <TabsContent value="map" className="space-y-3" forceMount>
           <IncidentMap
             reports={reports}
             selectedReportId={selectedReportId}
             center={mapCenter}
             userLocation={userLocation}
+            isActive={activeTab === "map"}
+            searchTarget={searchTarget}
             onSelectReport={setSelectedReportId}
             onViewportChange={setMapViewport}
           />
+          <LocationSearch proximity={mapCenter} onSelectLocation={onSelectLocation} />
 
           {selectedReport ? (
             <Link href={`/report/${selectedReport.id}`}>
