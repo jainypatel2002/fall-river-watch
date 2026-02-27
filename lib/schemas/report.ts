@@ -36,6 +36,10 @@ export const createReportSchema = z
       .min(20, "Add a bit more detail so neighbors can understand what happened.")
       .max(500, "Description is too long. Keep it under 500 characters."),
     location: locationSchema,
+    is_anonymous: z.boolean().default(false),
+    danger_radius_meters: z.number().int().min(50).max(5000).nullable().optional(),
+    danger_center_lat: latSchema.nullable().optional(),
+    danger_center_lng: lngSchema.nullable().optional(),
     mediaPaths: z.array(z.string().trim().min(3)).max(3).default([])
   })
   .superRefine((payload, ctx) => {
@@ -45,6 +49,11 @@ export const createReportSchema = z
         message: getPersonalInfoWarning(),
         path: ["description"]
       });
+    }
+
+    if (payload.danger_radius_meters && (payload.danger_center_lat === null || payload.danger_center_lng === null)) {
+      // API defaults missing center to incident point; form should still submit explicit nulls safely.
+      return;
     }
   });
 

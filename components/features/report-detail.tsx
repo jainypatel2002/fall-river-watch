@@ -8,12 +8,15 @@ import { CheckCircle2, CircleAlert, LoaderCircle, MapPin, Trash2 } from "lucide-
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { IncidentDiscussion } from "@/components/features/incident-discussion";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/features/status-badge";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
+import { useIncidentDetailQuery } from "@/lib/queries/incidents";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { queryKeys } from "@/lib/queries/keys";
 import { useDeleteReportMutation, useReportDetailQuery, useResolveMutation, useVoteMutation } from "@/lib/queries/reports";
+import { metersToMiles } from "@/lib/utils/geo";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime, prettyCategory } from "@/lib/utils/format";
 
@@ -24,6 +27,7 @@ export function ReportDetail({ reportId }: { reportId: string }) {
   const uiToast = useUiToast();
 
   const detailQuery = useReportDetailQuery(reportId);
+  const incidentDetailQuery = useIncidentDetailQuery(reportId);
   const voteMutation = useVoteMutation(reportId);
   const resolveMutation = useResolveMutation(reportId);
   const deleteMutation = useDeleteReportMutation(reportId);
@@ -42,6 +46,14 @@ export function ReportDetail({ reportId }: { reportId: string }) {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "report_votes", filter: `report_id=eq.${reportId}` }, () => {
         void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "incident_comments", filter: `incident_id=eq.${reportId}` }, () => {
+        void queryClient.invalidateQueries({ queryKey: ["incident-detail", reportId] });
+        void queryClient.invalidateQueries({ queryKey: ["incident-comments", reportId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "incident_attachments" }, () => {
+        void queryClient.invalidateQueries({ queryKey: ["incident-detail", reportId] });
+        void queryClient.invalidateQueries({ queryKey: ["incident-comments", reportId] });
       })
       .subscribe();
 
@@ -73,7 +85,11 @@ export function ReportDetail({ reportId }: { reportId: string }) {
   }
 
   const report = detailQuery.data.report;
-  const mediaUrls = report.media.map((item) => supabase.storage.from("report-media").getPublicUrl(item.storage_path).data.publicUrl);
+  const incident = incidentDetailQuery.data?.incident;
+  const topLevelCommentCount = incidentDetailQuery.data?.commentSummary.topLevelCount ?? 0;
+  const mediaUrls =
+    incident?.attachments?.map((item) => item.signedUrl) ??
+    report.media.map((item) => supabase.storage.from("report-media").getPublicUrl(item.storage_path).data.publicUrl);
   const canConfirmDelete = deleteConfirmText.trim() === "DELETE";
 
   async function handleDeleteReport() {
@@ -130,6 +146,11 @@ export function ReportDetail({ reportId }: { reportId: string }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">{prettyCategory(report.category)}</p>
           <CardTitle style={{ fontFamily: "var(--font-heading)" }}>{report.title || "Incident report"}</CardTitle>
           <p className="text-sm text-[color:var(--muted)]">Reported {formatRelativeTime(report.created_at)}</p>
+          {incident ? (
+            <p className="text-xs text-[color:var(--muted)]">
+              By <span className="font-medium text-[var(--fg)]">{incident.author_display_name}</span>
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-5">
           <p className="text-[var(--fg)]">{report.description}</p>
@@ -150,7 +171,13 @@ export function ReportDetail({ reportId }: { reportId: string }) {
             <div className="rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.7)] p-3 text-sm">
               <p className="text-xs text-[color:var(--muted)]">Approx location</p>
               <p className="font-semibold text-[var(--fg)]">
-                {report.display_lat.toFixed(4)}, {report.display_lng.toFixed(4)}
+                {(incident?.lat ?? report.display_lat).toFixed(4)}, {(incident?.lng ?? report.display_lng).toFixed(4)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.7)] p-3 text-sm">
+              <p className="text-xs text-[color:var(--muted)]">Danger radius</p>
+              <p className="font-semibold text-[var(--fg)]">
+                {incident?.danger_radius_meters ? `${metersToMiles(incident.danger_radius_meters).toFixed(2)} mi` : "None"}
               </p>
             </div>
           </div>
@@ -229,6 +256,8 @@ export function ReportDetail({ reportId }: { reportId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      <IncidentDiscussion incidentId={reportId} topLevelCount={topLevelCommentCount} />
 
       <Dialog
         open={deleteDialogOpen}

@@ -1,31 +1,104 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
+import { useEffect, useMemo, useRef } from "react";
+import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 type LocationPickerMapProps = {
   selectedLocation: { lat: number; lng: number } | null;
+  dangerRadiusMeters?: number | null;
   onLocationChange: (value: { lat: number; lng: number }) => void;
   onCenterChange?: (value: { lat: number; lng: number }) => void;
 };
 
 const FALLBACK_CENTER = { lat: 41.7001, lng: -71.155 };
 const CAMERA_SYNC_EPSILON = 0.0002;
+const DANGER_SOURCE_ID = "danger-preview-source";
+const DANGER_FILL_LAYER_ID = "danger-preview-fill";
+const DANGER_LINE_LAYER_ID = "danger-preview-line";
 
 function shouldReduceMotion() {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+function normalizeLongitude(value: number) {
+  const normalized = ((((value + 180) % 360) + 360) % 360) - 180;
+  return normalized === -180 ? 180 : normalized;
+}
+
 function hasMeaningfulDelta(current: { lat: number; lng: number }, next: { lat: number; lng: number }) {
   return Math.abs(current.lat - next.lat) > CAMERA_SYNC_EPSILON || Math.abs(current.lng - next.lng) > CAMERA_SYNC_EPSILON;
 }
 
-export default function LocationPickerMap({ selectedLocation, onLocationChange, onCenterChange }: LocationPickerMapProps) {
+function destinationPoint({ lat, lng, bearingDeg, distanceMeters }: { lat: number; lng: number; bearingDeg: number; distanceMeters: number }) {
+  const earthRadius = 6_371_000;
+  const angularDistance = distanceMeters / earthRadius;
+  const bearing = (bearingDeg * Math.PI) / 180;
+  const latRad = (lat * Math.PI) / 180;
+  const lngRad = (lng * Math.PI) / 180;
+
+  const nextLat = Math.asin(
+    Math.sin(latRad) * Math.cos(angularDistance) + Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearing)
+  );
+
+  const nextLng =
+    lngRad +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latRad),
+      Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(nextLat)
+    );
+
+  return {
+    lat: (nextLat * 180) / Math.PI,
+    lng: normalizeLongitude((nextLng * 180) / Math.PI)
+  };
+}
+
+function buildDangerPreviewGeoJson(location: { lat: number; lng: number } | null, radiusMeters: number | null | undefined) {
+  if (!location || !radiusMeters || radiusMeters < 50) {
+    return {
+      type: "FeatureCollection" as const,
+      features: [] as GeoJSON.Feature<GeoJSON.Polygon>[]
+    };
+  }
+
+  const steps = 40;
+  const ring: [number, number][] = [];
+
+  for (let index = 0; index <= steps; index += 1) {
+    const bearingDeg = (index / steps) * 360;
+    const next = destinationPoint({
+      lat: location.lat,
+      lng: location.lng,
+      bearingDeg,
+      distanceMeters: radiusMeters
+    });
+    ring.push([next.lng, next.lat]);
+  }
+
+  return {
+    type: "FeatureCollection" as const,
+    features: [
+      {
+        type: "Feature" as const,
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [ring]
+        },
+        properties: {
+          radius_meters: radiusMeters
+        }
+      }
+    ]
+  };
+}
+
+export default function LocationPickerMap({ selectedLocation, dangerRadiusMeters, onLocationChange, onCenterChange }: LocationPickerMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const dangerGeoJsonRef = useRef(buildDangerPreviewGeoJson(selectedLocation ?? FALLBACK_CENTER, dangerRadiusMeters));
   const onLocationChangeRef = useRef(onLocationChange);
   const onCenterChangeRef = useRef(onCenterChange);
   const initialCenterRef = useRef(selectedLocation ?? FALLBACK_CENTER);
@@ -34,6 +107,8 @@ export default function LocationPickerMap({ selectedLocation, onLocationChange, 
   const selectedLat = selectedLocation?.lat;
   const selectedLng = selectedLocation?.lng;
 
+  const dangerGeoJson = useMemo(() => buildDangerPreviewGeoJson(selectedLocation, dangerRadiusMeters), [dangerRadiusMeters, selectedLocation]);
+
   useEffect(() => {
     onLocationChangeRef.current = onLocationChange;
   }, [onLocationChange]);
@@ -41,6 +116,14 @@ export default function LocationPickerMap({ selectedLocation, onLocationChange, 
   useEffect(() => {
     onCenterChangeRef.current = onCenterChange;
   }, [onCenterChange]);
+
+  useEffect(() => {
+    dangerGeoJsonRef.current = dangerGeoJson;
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const source = map.getSource(DANGER_SOURCE_ID) as GeoJSONSource | undefined;
+    source?.setData(dangerGeoJson);
+  }, [dangerGeoJson]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !token) return;
@@ -73,6 +156,33 @@ export default function LocationPickerMap({ selectedLocation, onLocationChange, 
     map.on("moveend", () => {
       const center = map.getCenter();
       onCenterChangeRef.current?.({ lat: center.lat, lng: center.lng });
+    });
+
+    map.on("load", () => {
+      map.addSource(DANGER_SOURCE_ID, {
+        type: "geojson",
+        data: dangerGeoJsonRef.current
+      });
+
+      map.addLayer({
+        id: DANGER_FILL_LAYER_ID,
+        type: "fill",
+        source: DANGER_SOURCE_ID,
+        paint: {
+          "fill-color": "rgba(248,113,113,0.25)",
+          "fill-opacity": 0.25
+        }
+      });
+
+      map.addLayer({
+        id: DANGER_LINE_LAYER_ID,
+        type: "line",
+        source: DANGER_SOURCE_ID,
+        paint: {
+          "line-color": "rgba(248,113,113,0.8)",
+          "line-width": 1.5
+        }
+      });
     });
 
     mapRef.current = map;

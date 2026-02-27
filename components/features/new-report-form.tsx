@@ -13,15 +13,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { useCreateReportMutation } from "@/lib/queries/reports";
 import { createReportSchema, type CreateReportInput } from "@/lib/schemas/report";
+import { metersToMiles, milesToMeters } from "@/lib/utils/geo";
 import { INCIDENT_CATEGORIES } from "@/lib/utils/constants";
 import { prettyCategory } from "@/lib/utils/format";
 
 const DEFAULT_REPORT_LOCATION = { lat: 41.7001, lng: -71.155 };
+const DANGER_RADIUS_MIN_MILES = 0.1;
+const DANGER_RADIUS_MAX_MILES = Number(metersToMiles(5000).toFixed(2));
+const DANGER_RADIUS_STEP_MILES = 0.1;
 
 const LocationPickerMap = dynamic(() => import("@/components/map/location-picker-map"), {
   ssr: false,
@@ -63,6 +68,8 @@ export function NewReportForm() {
   const [reportMapCenter, setReportMapCenter] = useState<ReportLocation>(DEFAULT_REPORT_LOCATION);
   const [isLocating, setIsLocating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dangerRadiusEnabled, setDangerRadiusEnabled] = useState(false);
+  const [dangerRadiusMiles, setDangerRadiusMiles] = useState(0.5);
 
   const form = useForm<CreateReportFormValues>({
     resolver: zodResolver(createReportSchema),
@@ -72,6 +79,10 @@ export function NewReportForm() {
       title: "",
       description: "",
       location: DEFAULT_REPORT_LOCATION,
+      is_anonymous: false,
+      danger_radius_meters: null,
+      danger_center_lat: null,
+      danger_center_lng: null,
       mediaPaths: []
     }
   });
@@ -92,8 +103,13 @@ export function NewReportForm() {
         shouldDirty: options?.shouldDirty ?? true,
         shouldValidate: true
       });
+
+      if (dangerRadiusEnabled) {
+        form.setValue("danger_center_lat", next.lat, { shouldDirty: true, shouldValidate: false });
+        form.setValue("danger_center_lng", next.lng, { shouldDirty: true, shouldValidate: false });
+      }
     },
-    [form]
+    [dangerRadiusEnabled, form]
   );
 
   useEffect(() => {
@@ -115,6 +131,23 @@ export function NewReportForm() {
       { enableHighAccuracy: true, timeout: 8_000 }
     );
   }, [setReportLocation]);
+
+  useEffect(() => {
+    if (!dangerRadiusEnabled) {
+      form.setValue("danger_radius_meters", null, { shouldDirty: true, shouldValidate: false });
+      form.setValue("danger_center_lat", null, { shouldDirty: true, shouldValidate: false });
+      form.setValue("danger_center_lng", null, { shouldDirty: true, shouldValidate: false });
+      return;
+    }
+
+    const clampedMiles = Math.max(DANGER_RADIUS_MIN_MILES, Math.min(DANGER_RADIUS_MAX_MILES, dangerRadiusMiles));
+    const radiusMeters = Math.round(milesToMeters(clampedMiles));
+    const center = selectedReportLocation ?? reportMapCenter;
+
+    form.setValue("danger_radius_meters", radiusMeters, { shouldDirty: true, shouldValidate: false });
+    form.setValue("danger_center_lat", center.lat, { shouldDirty: true, shouldValidate: false });
+    form.setValue("danger_center_lng", center.lng, { shouldDirty: true, shouldValidate: false });
+  }, [dangerRadiusEnabled, dangerRadiusMiles, form, reportMapCenter, selectedReportLocation]);
 
   const previewUrls = useMemo(() => selectedFiles.map((file) => URL.createObjectURL(file)), [selectedFiles]);
 
@@ -337,6 +370,18 @@ export function NewReportForm() {
                 ) : null}
                 {form.formState.errors.description ? <p className="text-xs text-rose-300">{form.formState.errors.description.message}</p> : null}
               </div>
+
+              <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)] p-3">
+                <div>
+                  <Label htmlFor="anonymous-toggle">Post anonymously</Label>
+                  <p className="text-xs text-[color:var(--muted)]">Public views will show Anonymous, but moderation still keeps your account ID.</p>
+                </div>
+                <Switch
+                  id="anonymous-toggle"
+                  checked={Boolean(form.watch("is_anonymous"))}
+                  onCheckedChange={(value) => form.setValue("is_anonymous", value, { shouldDirty: true, shouldValidate: false })}
+                />
+              </div>
             </div>
           ) : null}
 
@@ -366,6 +411,7 @@ export function NewReportForm() {
                 <Label>Map (drag pin to adjust)</Label>
                 <LocationPickerMap
                   selectedLocation={selectedReportLocation}
+                  dangerRadiusMeters={form.watch("danger_radius_meters")}
                   onLocationChange={(next) => setReportLocation(next)}
                   onCenterChange={setReportMapCenter}
                 />
@@ -375,6 +421,54 @@ export function NewReportForm() {
                     : "Selected: No location yet"}
                 </p>
                 {locationError ? <p className="text-xs text-rose-300">{locationError}</p> : null}
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.72)] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="danger-radius-toggle">Danger radius</Label>
+                    <p className="text-xs text-[color:var(--muted)]">Optional impact area around the incident pin.</p>
+                  </div>
+                  <Switch id="danger-radius-toggle" checked={dangerRadiusEnabled} onCheckedChange={setDangerRadiusEnabled} />
+                </div>
+
+                {dangerRadiusEnabled ? (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="danger-radius-slider" className="text-xs text-[color:var(--muted)]">
+                        Radius ({dangerRadiusMiles.toFixed(1)} mi)
+                      </Label>
+                      <input
+                        id="danger-radius-slider"
+                        type="range"
+                        min={DANGER_RADIUS_MIN_MILES}
+                        max={DANGER_RADIUS_MAX_MILES}
+                        step={DANGER_RADIUS_STEP_MILES}
+                        value={dangerRadiusMiles}
+                        onChange={(event) => setDangerRadiusMiles(Number(event.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="danger-radius-input" className="text-xs text-[color:var(--muted)]">
+                        Radius (miles)
+                      </Label>
+                      <Input
+                        id="danger-radius-input"
+                        type="number"
+                        min={DANGER_RADIUS_MIN_MILES}
+                        max={DANGER_RADIUS_MAX_MILES}
+                        step={DANGER_RADIUS_STEP_MILES}
+                        value={dangerRadiusMiles}
+                        onChange={(event) => {
+                          const next = Number(event.target.value);
+                          if (!Number.isFinite(next)) return;
+                          setDangerRadiusMiles(Math.max(DANGER_RADIUS_MIN_MILES, Math.min(DANGER_RADIUS_MAX_MILES, next)));
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -416,6 +510,8 @@ export function NewReportForm() {
                 <p className="font-medium text-[var(--fg)]">Ready to submit</p>
                 <p>Category: {prettyCategory(form.getValues("category"))}</p>
                 <p>Severity: {form.getValues("severity")}</p>
+                <p>Anonymous: {form.getValues("is_anonymous") ? "Yes" : "No"}</p>
+                <p>Danger radius: {form.getValues("danger_radius_meters") ? `${metersToMiles(form.getValues("danger_radius_meters") ?? 0).toFixed(1)} mi` : "None"}</p>
                 <p>Photos: {selectedFiles.length}</p>
               </div>
             </div>

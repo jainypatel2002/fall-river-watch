@@ -5,6 +5,8 @@ import { reportFiltersSchema } from "@/lib/schemas/report";
 import { reportsQueryResponseSchema } from "@/lib/schemas/api";
 import { getTimeWindowHours, runReportExpiration } from "@/lib/server/reports";
 
+const ANONYMOUS_REPORTER_ID = "00000000-0000-0000-0000-000000000000";
+
 type Point = { lat: number; lng: number };
 type Bounds = { north: number; south: number; east: number; west: number };
 
@@ -345,6 +347,27 @@ export async function POST(request: Request) {
 
     if (!hasDisplayColumns) {
       reports = await hydrateVotesAndMedia(supabase, reports);
+    }
+
+    if (reports.length) {
+      const reportIds = reports.map((report) => report.id);
+      const { data: anonymityRows, error: anonymityError } = await supabase.from("reports").select("id, is_anonymous").in("id", reportIds);
+
+      if (anonymityError) {
+        return NextResponse.json({ error: anonymityError.message }, { status: 500 });
+      }
+
+      const anonymousIds = new Set((anonymityRows ?? []).filter((row) => row.is_anonymous).map((row) => row.id));
+      if (anonymousIds.size) {
+        reports = reports.map((report) =>
+          anonymousIds.has(report.id)
+            ? {
+                ...report,
+                reporter_id: ANONYMOUS_REPORTER_ID
+              }
+            : report
+        );
+      }
     }
 
     const bounds = filters.bounds;

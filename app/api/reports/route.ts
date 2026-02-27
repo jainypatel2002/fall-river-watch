@@ -53,7 +53,11 @@ export async function POST(request: Request) {
       severity: payload.severity,
       title: payload.title?.trim() ? payload.title.trim() : null,
       description: payload.description,
-      location: `SRID=4326;POINT(${payload.location.lng} ${payload.location.lat})`
+      location: `SRID=4326;POINT(${payload.location.lng} ${payload.location.lat})`,
+      is_anonymous: payload.is_anonymous ?? false,
+      danger_radius_meters: payload.danger_radius_meters ?? null,
+      danger_center_lat: payload.danger_radius_meters ? (payload.danger_center_lat ?? payload.location.lat) : null,
+      danger_center_lng: payload.danger_radius_meters ? (payload.danger_center_lng ?? payload.location.lng) : null
     });
 
     if (reportError) {

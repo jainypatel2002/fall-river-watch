@@ -32,6 +32,7 @@ type UiState = {
   setActiveTab: (tab: "map" | "feed") => void;
   setSelectedReportId: (id: string | null) => void;
   setFilterDrawerOpen: (open: boolean) => void;
+  setCategories: (categories: IncidentCategory[]) => void;
   toggleCategory: (category: IncidentCategory) => void;
   setTimeWindow: (value: (typeof TIME_WINDOWS)[number]) => void;
   setRadiusMiles: (value: (typeof RADIUS_OPTIONS)[number]) => void;
@@ -64,6 +65,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSelectedReportId: (id) => set({ selectedReportId: id }),
   setFilterDrawerOpen: (open) => set({ filterDrawerOpen: open }),
+  setCategories: (categories) => set({ categories: categories.length ? categories : [...INCIDENT_CATEGORIES] }),
   toggleCategory: (category) =>
     set((state) => {
       if (state.categories.includes(category)) {
