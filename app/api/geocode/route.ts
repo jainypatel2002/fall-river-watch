@@ -74,11 +74,13 @@ export async function GET(request: Request) {
         lat: feature.center[1]
       },
       bbox: feature.bbox,
-      context: feature.context?.map((item) => ({
-        id: item.id ?? "",
-        text: item.text ?? "",
-        short_code: item.short_code
-      }))
+      context: feature.context
+        ?.map((item) => ({
+          id: item.id,
+          text: item.text,
+          short_code: item.short_code
+        }))
+        .filter((item) => item.id || item.text || item.short_code)
     }));
 
     return NextResponse.json({ suggestions });
