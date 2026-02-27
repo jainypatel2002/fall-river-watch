@@ -13,7 +13,7 @@ type GeocodeSuggestion = {
   place_name: string;
   center: { lng: number; lat: number };
   bbox?: [number, number, number, number];
-  context?: Array<{ id: string; text: string; short_code?: string }>;
+  context?: Array<{ id?: string; text?: string; short_code?: string }>;
 };
 
 type GeocodeResponse = {
