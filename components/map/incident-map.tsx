@@ -19,6 +19,8 @@ type IncidentMapProps = {
   selectedReportId: string | null;
   center: { lat: number; lng: number };
   userLocation: { lat: number; lng: number } | null;
+  isActive?: boolean;
+  searchTarget?: { id: string; label: string; lat: number; lng: number } | null;
   onSelectReport: (id: string) => void;
   onViewportChange: (viewport: {
     center: { lat: number; lng: number };
@@ -30,6 +32,8 @@ const SOURCE_ID = "reports-source";
 const LAYER_CLUSTERS = "clusters";
 const LAYER_CLUSTER_COUNT = "cluster-count";
 const LAYER_POINTS = "unclustered-point";
+const VIEWPORT_DEBOUNCE_MS = 280;
+const CAMERA_SYNC_EPSILON = 0.0004;
 
 function shouldReduceMotion() {
   if (typeof window === "undefined" || !window.matchMedia) return false;
@@ -39,6 +43,10 @@ function shouldReduceMotion() {
 function normalizeLongitude(value: number) {
   const normalized = ((((value + 180) % 360) + 360) % 360) - 180;
   return normalized === -180 ? 180 : normalized;
+}
+
+function hasMeaningfulCenterDelta(current: { lat: number; lng: number }, next: { lat: number; lng: number }) {
+  return Math.abs(current.lat - next.lat) > CAMERA_SYNC_EPSILON || Math.abs(current.lng - next.lng) > CAMERA_SYNC_EPSILON;
 }
 
 function getFeatureCoordinates(feature: mapboxgl.MapboxGeoJSONFeature | undefined): [number, number] | null {
@@ -53,6 +61,8 @@ export default function IncidentMap({
   selectedReportId,
   center,
   userLocation,
+  isActive = true,
+  searchTarget = null,
   onSelectReport,
   onViewportChange
 }: IncidentMapProps) {
@@ -60,7 +70,17 @@ export default function IncidentMap({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const moveDebounceRef = useRef<number | null>(null);
+  const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const moveEndDebounceRef = useRef<number | null>(null);
+  const resizeRafRef = useRef<number | null>(null);
+  const geoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, GeoJSON.GeoJsonProperties>>({
+    type: "FeatureCollection",
+    features: []
+  });
+  const onSelectReportRef = useRef(onSelectReport);
+  const onViewportChangeRef = useRef(onViewportChange);
+  const lastSearchTargetIdRef = useRef<string | null>(null);
+  const initialCenterRef = useRef(center);
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   const geoJson = useMemo(
@@ -85,6 +105,22 @@ export default function IncidentMap({
   );
 
   useEffect(() => {
+    onSelectReportRef.current = onSelectReport;
+  }, [onSelectReport]);
+
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange;
+  }, [onViewportChange]);
+
+  useEffect(() => {
+    geoJsonRef.current = geoJson;
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
+    source?.setData(geoJson);
+  }, [geoJson]);
+
+  useEffect(() => {
     if (!mapContainerRef.current || mapRef.current || !token) return;
 
     mapboxgl.accessToken = token;
@@ -92,7 +128,7 @@ export default function IncidentMap({
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/dark-v11",
-      center: [center.lng, center.lat],
+      center: [initialCenterRef.current.lng, initialCenterRef.current.lat],
       zoom: 12,
       attributionControl: true
     });
@@ -104,7 +140,7 @@ export default function IncidentMap({
       const nextCenter = map.getCenter();
       const nextBounds = map.getBounds();
       if (!nextBounds) return;
-      onViewportChange({
+      onViewportChangeRef.current({
         center: { lat: nextCenter.lat, lng: normalizeLongitude(nextCenter.lng) },
         bounds: {
           north: nextBounds.getNorth(),
@@ -116,16 +152,16 @@ export default function IncidentMap({
     };
 
     const scheduleViewportSync = () => {
-      if (moveDebounceRef.current) window.clearTimeout(moveDebounceRef.current);
-      moveDebounceRef.current = window.setTimeout(() => {
+      if (moveEndDebounceRef.current) window.clearTimeout(moveEndDebounceRef.current);
+      moveEndDebounceRef.current = window.setTimeout(() => {
         emitViewport();
-      }, 220);
+      }, VIEWPORT_DEBOUNCE_MS);
     };
 
-    map.on("load", () => {
+    const handleMapLoad = () => {
       map.addSource(SOURCE_ID, {
         type: "geojson",
-        data: geoJson,
+        data: geoJsonRef.current,
         cluster: true,
         clusterMaxZoom: 14,
         clusterRadius: 52
@@ -224,7 +260,7 @@ export default function IncidentMap({
         if (!feature?.properties?.id || !coords) return;
 
         const id = String(feature.properties.id);
-        onSelectReport(id);
+        onSelectReportRef.current(id);
 
         const title = String(feature.properties.title ?? "Report");
         const status = String(feature.properties.status ?? "unverified");
@@ -250,28 +286,45 @@ export default function IncidentMap({
       });
 
       emitViewport();
-    });
+      map.resize();
+    };
 
-    map.on("move", scheduleViewportSync);
-    map.on("moveend", emitViewport);
+    const handleResize = () => {
+      if (resizeRafRef.current !== null) window.cancelAnimationFrame(resizeRafRef.current);
+      resizeRafRef.current = window.requestAnimationFrame(() => {
+        map.resize();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(mapContainerRef.current);
+
+    map.on("load", handleMapLoad);
+    map.on("moveend", scheduleViewportSync);
 
     return () => {
-      if (moveDebounceRef.current) window.clearTimeout(moveDebounceRef.current);
+      if (moveEndDebounceRef.current) window.clearTimeout(moveEndDebounceRef.current);
+      if (resizeRafRef.current !== null) window.cancelAnimationFrame(resizeRafRef.current);
+      resizeObserver.disconnect();
       popupRef.current?.remove();
+      userMarkerRef.current?.remove();
+      searchMarkerRef.current?.remove();
       map.remove();
       mapRef.current = null;
+      userMarkerRef.current = null;
+      searchMarkerRef.current = null;
+      popupRef.current = null;
     };
-  }, [center.lat, center.lng, geoJson, onSelectReport, onViewportChange, token]);
+  }, [token]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-
-    const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
-    if (source) {
-      source.setData(geoJson);
-    }
-  }, [geoJson]);
+    if (!map || !isActive) return;
+    const rafId = window.requestAnimationFrame(() => {
+      map.resize();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isActive]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -282,9 +335,45 @@ export default function IncidentMap({
 
     map.easeTo({
       center: [selected.display_lng, selected.display_lat],
-      duration: shouldReduceMotion() ? 0 : 220
+      duration: shouldReduceMotion() ? 0 : 220,
+      essential: true
     });
   }, [reports, selectedReportId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !searchTarget) return;
+    if (lastSearchTargetIdRef.current === searchTarget.id) return;
+    lastSearchTargetIdRef.current = searchTarget.id;
+
+    if (!searchMarkerRef.current) {
+      searchMarkerRef.current = new mapboxgl.Marker({ color: "#d946ef" }).addTo(map);
+    }
+    searchMarkerRef.current.setLngLat([searchTarget.lng, searchTarget.lat]);
+
+    map.flyTo({
+      center: [searchTarget.lng, searchTarget.lat],
+      zoom: Math.max(13, map.getZoom()),
+      duration: shouldReduceMotion() ? 0 : 700,
+      essential: true
+    });
+  }, [searchTarget]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const mapCenter = map.getCenter();
+    const current = { lat: mapCenter.lat, lng: normalizeLongitude(mapCenter.lng) };
+    const next = { lat: center.lat, lng: normalizeLongitude(center.lng) };
+    if (!hasMeaningfulCenterDelta(current, next)) return;
+
+    map.easeTo({
+      center: [next.lng, next.lat],
+      duration: shouldReduceMotion() ? 0 : 260,
+      essential: true
+    });
+  }, [center.lat, center.lng]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -300,11 +389,11 @@ export default function IncidentMap({
 
   if (!token) {
     return (
-      <div className="grid h-[62vh] place-items-center rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)]">
+      <div className="grid h-[62vh] min-h-[22rem] place-items-center rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)]">
         Missing `NEXT_PUBLIC_MAPBOX_TOKEN`.
       </div>
     );
   }
 
-  return <div ref={mapContainerRef} className="h-[62vh] w-full overflow-hidden rounded-2xl border border-[var(--border)]" />;
+  return <div ref={mapContainerRef} className="h-[62vh] min-h-[22rem] w-full overflow-hidden rounded-2xl border border-[var(--border)]" />;
 }
