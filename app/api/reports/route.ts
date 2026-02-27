@@ -24,6 +24,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: rateCheck.reason }, { status: 429 });
     }
 
+    // Preflight profile check
+    const { data: existingProfile } = await auth.supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+
+    if (!existingProfile) {
+      const { error: profileError } = await auth.supabase.from("profiles").insert({
+        id: auth.user.id,
+        display_name: auth.user.user_metadata?.display_name || auth.user.email?.split("@")[0] || "User",
+        role: "user",
+        trust_score: 0
+      });
+
+      if (profileError) {
+        return NextResponse.json({ error: "Failed to create user profile" }, { status: 500 });
+      }
+    }
+
     const reportId = payload.id ?? crypto.randomUUID();
 
     const { error: reportError } = await auth.supabase.from("reports").insert({
