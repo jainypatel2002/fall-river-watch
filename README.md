@@ -113,3 +113,4 @@ Edge function stubs:
 - `supabase/functions/rate_limit_guard/index.ts`
 
 Provider integration (Resend/VAPID) intentionally deferred.
+# fall-river-watch
