@@ -19,11 +19,19 @@ export async function deleteReportWithCleanup(
   const { data, error } = await supabase.rpc("delete_report", { p_report_id: reportId });
 
   if (error) {
-    if (error.message === "Forbidden" || error.message === "Unauthorized") {
+    if (error.message === "Unauthorized") {
+      return { ok: false, status: 401, error: error.message };
+    }
+
+    if (error.message === "Forbidden") {
       return { ok: false, status: 403, error: error.message };
     }
 
-    return { ok: false, status: 400, error: error.message };
+    if (error.message === "Report not found" || error.code === "P0002") {
+      return { ok: false, status: 404, error: "Report not found" };
+    }
+
+    return { ok: false, status: 500, error: error.message };
   }
 
   const parsedRow = deleteReportRpcRowSchema.safeParse(Array.isArray(data) ? data[0] : data);

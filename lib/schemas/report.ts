@@ -58,7 +58,10 @@ export const createReportSchema = z
   });
 
 export const voteSchema = z.object({
-  voteType: z.enum(["confirm", "dispute"])
+  voteType: z.enum(["confirm", "dispute", "clear"]).optional(),
+  status: z.enum(["confirm", "dispute"]).nullable().optional()
+}).refine((value) => typeof value.status !== "undefined" || typeof value.voteType !== "undefined", {
+  message: "Verification status is required"
 });
 
 export const reportFiltersSchema = z.object({

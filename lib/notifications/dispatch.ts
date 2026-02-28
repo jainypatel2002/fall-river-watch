@@ -1,14 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { calculateDistanceMiles } from "@/lib/geo/haversine";
 import { isQuietHours } from "@/lib/time/quietHours";
 import { sendIncidentEmail } from "@/lib/email/send";
 import { sendWebPush } from "@/lib/push/send";
-
-// Ensure we have server-role access for raw background tasks that touch other user rows
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 interface DispatchOptions {
     incidentId: string;
@@ -21,6 +15,7 @@ interface DispatchOptions {
 
 export async function dispatchNotifications(incident: DispatchOptions) {
     try {
+        const supabase = createSupabaseAdminClient() as any;
         // 1. Fetch enabled preferences globally
         // We cannot filter easily by GIN in standard JS without a complex RPC, so we filter categories locally assuming < thousands globally
         // or use a structured query. We'll use a standard filter then map since we're Server Side.
@@ -36,7 +31,7 @@ export async function dispatchNotifications(incident: DispatchOptions) {
 
         const { data: profiles } = await supabase.from("profiles").select("id, email");
 
-        const promises = preferences.map(async (pref) => {
+        const promises = preferences.map(async (pref: any) => {
             // 2. Eligibility checks
             if (pref.categories && pref.categories.length > 0 && !pref.categories.includes(incident.category)) return;
 
@@ -47,21 +42,25 @@ export async function dispatchNotifications(incident: DispatchOptions) {
 
             if (isQuietHours(pref.quiet_start, pref.quiet_end, pref.timezone)) return;
 
-            const profile = profiles?.find((p) => p.id === pref.user_id);
+            const profile = profiles?.find((p: any) => p.id === pref.user_id);
             if (!profile) return;
 
             // 3. For each selected channel
             for (const channel of pref.channels) {
+                const deliveryChannel = channel === "web_push" ? "push" : channel;
                 // Attempt insert to notification_deliveries with unique constraint for dedupe
                 const { error: deliveryError } = await supabase.from("notification_deliveries").insert({
                     user_id: pref.user_id,
                     incident_id: incident.incidentId,
-                    channel
+                    channel: deliveryChannel
                 });
 
                 // Unique constraint violation means we already sent it (error code 23505)
                 if (deliveryError && deliveryError.code === "23505") continue;
-                // Ignore other delivery errors softly and proceed
+                if (deliveryError) {
+                    console.error("[Dispatch Error] delivery insert failed", deliveryError);
+                    continue;
+                }
 
                 if (channel === "email" && profile.email) {
                     await sendIncidentEmail({

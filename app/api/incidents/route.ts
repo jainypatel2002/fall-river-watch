@@ -46,12 +46,14 @@ function parseCategoriesFromSearchParams(searchParams: URLSearchParams) {
       .filter(Boolean)
   ];
 
-  if (!raw.length) {
+  const normalizedRaw = raw.map(value => value.toLowerCase().replace(/\s+/g, '_'));
+
+  if (!normalizedRaw.length) {
     return { categories: [...INCIDENT_CATEGORIES] as string[] };
   }
 
-  const parsed = parseIncidentCategories(raw);
-  const invalid = raw.filter((value) => !INCIDENT_CATEGORIES.includes(value as (typeof INCIDENT_CATEGORIES)[number]));
+  const parsed = parseIncidentCategories(normalizedRaw);
+  const invalid = normalizedRaw.filter((value) => !INCIDENT_CATEGORIES.includes(value as (typeof INCIDENT_CATEGORIES)[number]));
 
   if (invalid.length) {
     return { error: `Unsupported category keys: ${invalid.join(", ")}` };
@@ -102,7 +104,14 @@ export async function GET(request: Request) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[Supabase Error]", {
+        code: error.code,
+        message: error.message,
+        details: (error as any).details,
+        hint: (error as any).hint
+      });
+      const devError = process.env.NODE_ENV === "development" ? `DB schema mismatch: ${error.message}` : "Database error";
+      return NextResponse.json({ error: devError }, { status: 500 });
     }
 
     const rows = (data ?? []) as Array<{
@@ -122,6 +131,48 @@ export async function GET(request: Request) {
       danger_center_lng: number | null;
     }>;
 
+    const reportIds = rows.map((row) => row.id);
+    const voteCountsByReport = new Map<string, { confirms: number; disputes: number }>();
+    const userVoteByReport = new Map<string, "confirm" | "dispute" | null>();
+
+    if (reportIds.length) {
+      const { data: voteRows, error: voteError } = await supabase
+        .from("report_votes")
+        .select("report_id, vote_type")
+        .in("report_id", reportIds);
+
+      if (voteError) {
+        return NextResponse.json({ error: voteError.message }, { status: 500 });
+      }
+
+      for (const vote of voteRows ?? []) {
+        const bucket = voteCountsByReport.get(vote.report_id) ?? { confirms: 0, disputes: 0 };
+        if (vote.vote_type === "confirm") bucket.confirms += 1;
+        if (vote.vote_type === "dispute") bucket.disputes += 1;
+        voteCountsByReport.set(vote.report_id, bucket);
+      }
+
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: userVoteRows, error: userVoteError } = await supabase
+          .from("report_votes")
+          .select("report_id, vote_type")
+          .eq("voter_id", user.id)
+          .in("report_id", reportIds);
+
+        if (userVoteError) {
+          return NextResponse.json({ error: userVoteError.message }, { status: 500 });
+        }
+
+        for (const vote of userVoteRows ?? []) {
+          userVoteByReport.set(vote.report_id, vote.vote_type as "confirm" | "dispute");
+        }
+      }
+    }
+
     const items = rows.map((row) => ({
       id: row.id,
       category: row.category,
@@ -136,7 +187,10 @@ export async function GET(request: Request) {
       author_display_name: row.is_anonymous ? "Anonymous" : row.author_display_name,
       danger_radius_meters: row.danger_radius_meters,
       danger_center_lat: row.danger_center_lat,
-      danger_center_lng: row.danger_center_lng
+      danger_center_lng: row.danger_center_lng,
+      confirms: voteCountsByReport.get(row.id)?.confirms ?? 0,
+      disputes: voteCountsByReport.get(row.id)?.disputes ?? 0,
+      user_vote: userVoteByReport.get(row.id) ?? null
     }));
 
     const last = rows[rows.length - 1];
@@ -177,6 +231,12 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError || !inserted) {
+      console.error("[Supabase Error]", {
+        code: insertError?.code,
+        message: insertError?.message,
+        details: (insertError as any)?.details,
+        hint: (insertError as any)?.hint
+      });
       return NextResponse.json({ error: insertError?.message ?? "Failed to create incident" }, { status: 400 });
     }
 

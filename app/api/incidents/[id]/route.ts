@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { signAttachmentUrls } from "@/lib/server/incident-attachments";
+import { deleteReportWithCleanup } from "@/lib/server/report-delete";
+import { isAdmin } from "@/lib/server/roles";
+import { requireAuth } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -95,4 +98,42 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       topLevelCount: Number(detail.top_level_comment_count ?? 0)
     }
   });
+}
+
+export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth.response) return auth.response;
+
+  try {
+    const { id } = await context.params;
+    const { data: report, error: reportError } = await auth.supabase
+      .from("reports")
+      .select("id, reporter_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (reportError) {
+      return NextResponse.json({ error: reportError.message }, { status: 500 });
+    }
+
+    if (!report) {
+      return NextResponse.json({ error: "Incident not found" }, { status: 404 });
+    }
+
+    const userIsAdmin = await isAdmin(auth.supabase, auth.user.id);
+    const isOwner = report.reporter_id === auth.user.id;
+    if (!isOwner && !userIsAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const result = await deleteReportWithCleanup(auth.supabase, id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    return NextResponse.json({ ok: true, warning: result.warning }, { status: 200 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

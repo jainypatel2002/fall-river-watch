@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
-import { voteSchema } from "@/lib/schemas/report";
+import { z } from "zod";
 import { requireAuth } from "@/lib/supabase/auth";
 import { enforceDailyLimit } from "@/lib/server/rate-limit";
+import { applyReportVerification, type VerificationStatus } from "@/lib/server/report-verification";
 import { runReportExpiration } from "@/lib/server/reports";
+
+const reportVoteSchema = z
+  .object({
+    voteType: z.enum(["confirm", "dispute", "clear"]).optional(),
+    status: z.enum(["confirm", "dispute"]).nullable().optional()
+  })
+  .refine((value) => typeof value.status !== "undefined" || typeof value.voteType !== "undefined", {
+    message: "Verification status is required"
+  });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -12,7 +22,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   try {
     const body = await request.json();
-    const payload = voteSchema.parse(body);
+    const payload = reportVoteSchema.parse(body);
+    const requestedStatus: VerificationStatus =
+      typeof payload.status !== "undefined"
+        ? payload.status
+        : payload.voteType === "clear"
+        ? null
+        : payload.voteType === "confirm" || payload.voteType === "dispute"
+        ? payload.voteType
+        : null;
 
     const { data: existingVote, error: existingVoteError } = await auth.supabase
       .from("report_votes")
@@ -22,10 +40,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       .maybeSingle();
 
     if (existingVoteError) {
-      return NextResponse.json({ error: existingVoteError.message }, { status: 400 });
+      return NextResponse.json({ error: existingVoteError.message }, { status: 500 });
     }
 
-    if (!existingVote) {
+    if (!existingVote && requestedStatus !== null) {
       const rateCheck = await enforceDailyLimit({
         supabase: auth.supabase,
         table: "report_votes",
@@ -39,41 +57,40 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }
     }
 
-    const { data: voteRows, error } = await auth.supabase.rpc("vote_on_report", {
-      p_report_id: id,
-      p_vote: payload.voteType
+    const result = await applyReportVerification({
+      supabase: auth.supabase,
+      incidentId: id,
+      userId: auth.user.id,
+      status: requestedStatus
     });
 
-    if (error) {
-      if (error.message === "Report not found") {
-        return NextResponse.json({ error: error.message }, { status: 404 });
-      }
-      if (error.message === "Unauthorized") {
-        return NextResponse.json({ error: error.message }, { status: 401 });
-      }
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    const voteRow = (Array.isArray(voteRows) ? voteRows[0] : voteRows) as
-      | { confirms_count?: number; disputes_count?: number; user_vote?: "confirm" | "dispute" | null }
-      | null;
-
-    if (!voteRow) {
-      return NextResponse.json({ error: "Vote could not be applied" }, { status: 500 });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     await runReportExpiration(auth.supabase);
 
     return NextResponse.json({
       ok: true,
+      incident_id: result.incident_id,
+      user_status: result.user_status,
+      counts: result.counts,
       vote: {
-        confirms: Number(voteRow.confirms_count ?? 0),
-        disputes: Number(voteRow.disputes_count ?? 0),
-        user_vote: voteRow.user_vote ?? null
+        confirms: result.counts.confirm,
+        disputes: result.counts.dispute,
+        user_vote: result.user_status
       }
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Invalid request";
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid request" }, { status: 400 });
+    }
+
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,27 +1,39 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAuth } from "@/lib/supabase/auth";
 
+const unsubscribeSchema = z.object({
+  endpoint: z.string().url()
+});
+
 export async function POST(request: Request) {
-    const auth = await requireAuth();
-    if (auth.response) return auth.response;
+  const auth = await requireAuth();
+  if (auth.response) return auth.response;
 
-    try {
-        const body = await request.json();
-        const endpoint = body.endpoint;
+  try {
+    const body = unsubscribeSchema.parse(await request.json());
 
-        if (!endpoint) {
-            return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
-        }
+    const { data, error } = await auth.supabase
+      .from("push_subscriptions")
+      .update({ is_active: false, last_seen_at: new Date().toISOString() })
+      .eq("endpoint", body.endpoint)
+      .eq("user_id", auth.user.id)
+      .select("id")
+      .maybeSingle();
 
-        // Mark inactive instead of raw DB delete for robust logs
-        await auth.supabase
-            .from("push_subscriptions")
-            .update({ is_active: false })
-            .eq("endpoint", endpoint)
-            .eq("user_id", auth.user.id);
-
-        return NextResponse.json({ ok: true });
-    } catch (error) {
-        return NextResponse.json({ error: "Invalid request format" }, { status: 400 });
+    if (error) {
+      if (error.code === "42501") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.json({ error: "Failed to update subscription" }, { status: 500 });
     }
+
+    // Idempotent success even if already inactive or absent.
+    return NextResponse.json({ ok: true, found: Boolean(data) }, { status: 200 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid request format" }, { status: 400 });
+  }
 }

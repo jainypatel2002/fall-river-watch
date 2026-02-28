@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,9 @@ export function NotificationSettingsForm() {
   const uiToast = useUiToast();
   const [draft, setDraft] = useState<NotificationSettingsInput | null>(null);
   const [pushStatusMsg, setPushStatusMsg] = useState("");
+  const [pushStatusLevel, setPushStatusLevel] = useState<"success" | "warning" | "neutral">("neutral");
+  const [pushRetryAvailable, setPushRetryAvailable] = useState(false);
+  const [isRetryingPush, setIsRetryingPush] = useState(false);
   const [serverConfig, setServerConfig] = useState<{ emailConfigured: boolean; pushConfigured: boolean } | null>(null);
   const userLocation = useUiStore((state) => state.userLocation);
 
@@ -40,6 +44,20 @@ export function NotificationSettingsForm() {
       .then(res => res.json())
       .then(data => setServerConfig(data))
       .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void checkPushActive().then((isActive) => {
+      if (!active || !isActive) return;
+      setPushStatusMsg("Web Push active on this device.");
+      setPushStatusLevel("success");
+      setPushRetryAvailable(false);
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const persisted = useMemo(() => {
@@ -58,6 +76,33 @@ export function NotificationSettingsForm() {
 
   function updateDraft(mutator: (current: NotificationSettingsInput) => NotificationSettingsInput) {
     setDraft((previous) => mutator(previous ?? persisted ?? defaultSettings));
+  }
+
+  async function attemptPushRegistration() {
+    setIsRetryingPush(true);
+    try {
+      const result = await subscribeToPush();
+      setPushStatusMsg(result.message);
+
+      if (result.success) {
+        setPushStatusLevel("success");
+        setPushRetryAvailable(false);
+        return true;
+      }
+
+      setPushStatusLevel(result.unsupported ? "neutral" : "warning");
+      setPushRetryAvailable(result.recoverable);
+
+      if (result.unsupported) {
+        uiToast.info("Web Push unavailable", result.message);
+      } else {
+        uiToast.error(`Web Push not enabled: ${result.message}`);
+      }
+
+      return false;
+    } finally {
+      setIsRetryingPush(false);
+    }
   }
 
   async function save() {
@@ -85,23 +130,18 @@ export function NotificationSettingsForm() {
       finalSettings.center_lng = userLocation.lng;
     }
 
-    // Process push subscription logic if active and channels specifically requested Web Push
-    if (finalSettings.enabled && finalSettings.channels.includes("web_push")) {
-      const sub = await subscribeToPush();
-      if (!sub.success) {
-        setPushStatusMsg(sub.message || "Push inactive");
-        if (sub.message !== "Server configuration missing.") {
-          uiToast.error(`Web Push issue: ${sub.message}`);
-        }
-      } else {
-        setPushStatusMsg("Active on this device");
-      }
-    }
-
     try {
       await mutation.mutateAsync(finalSettings);
       uiToast.success("Notification preferences saved");
       setDraft(null);
+
+      if (finalSettings.enabled && finalSettings.channels.includes("web_push")) {
+        await attemptPushRegistration();
+      } else {
+        setPushStatusMsg("");
+        setPushRetryAvailable(false);
+        setPushStatusLevel("neutral");
+      }
     } catch (error) {
       uiToast.error((error as Error).message);
     }
@@ -117,8 +157,25 @@ export function NotificationSettingsForm() {
             <span className="block mt-2 text-xs font-medium text-destructive">Server configuration missing. Notifications may not deliver.</span>
           )}
           {pushStatusMsg && (
-            <span className="block mt-2 text-xs font-medium text-amber-500">{pushStatusMsg}</span>
+            <span
+              className={`block mt-2 text-xs font-medium ${pushStatusLevel === "success"
+                ? "text-emerald-400"
+                : pushStatusLevel === "warning"
+                  ? "text-amber-500"
+                  : "text-[color:var(--muted)]"
+                }`}
+            >
+              {pushStatusMsg}
+            </span>
           )}
+          {pushRetryAvailable ? (
+            <div className="mt-2">
+              <Button type="button" variant="outline" size="sm" disabled={isRetryingPush} onClick={() => void attemptPushRegistration()}>
+                {isRetryingPush ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                Try again
+              </Button>
+            </div>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -234,7 +291,7 @@ export function NotificationSettingsForm() {
           </div>
         </div>
 
-        <Button onClick={save} disabled={mutation.isPending}>
+        <Button onClick={save} disabled={mutation.isPending || isRetryingPush}>
           Save Preferences
         </Button>
       </CardContent>

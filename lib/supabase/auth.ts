@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdmin } from "@/lib/server/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function getCurrentUser() {
@@ -50,9 +51,8 @@ export async function requireAdmin() {
   const base = await requireAuth();
   if (!base.user || base.response) return base;
 
-  const { data: profile } = await base.supabase.from("profiles").select("role").eq("id", base.user.id).single();
-
-  if (!profile || profile.role !== "admin") {
+  const admin = await isAdmin(base.supabase, base.user.id);
+  if (!admin) {
     return {
       ...base,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 })

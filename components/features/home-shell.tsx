@@ -4,18 +4,20 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, ShieldAlert } from "lucide-react";
+import { AlertCircle, CheckCircle2, CircleAlert, LoaderCircle, ShieldAlert } from "lucide-react";
 import { CategoryLayerControl } from "@/components/map/category-layer-control";
 import { LocationSearch } from "@/components/map/LocationSearch";
 import { ReportFab } from "@/components/features/report-fab";
 import { ReportFeed } from "@/components/features/report-feed";
 import { StatusBadge } from "@/components/features/status-badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { useIncidentsMapQuery } from "@/lib/queries/incidents";
+import { useVoteMutation } from "@/lib/queries/reports";
 import { useMapSearchStore } from "@/lib/store/map-search-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { formatRelativeTime, prettyCategory } from "@/lib/utils/format";
@@ -94,13 +96,31 @@ export function HomeShell() {
     .filter((item) => haversineMeters(mapCenter, { lat: item.lat, lng: item.lng }) <= radiusMiles * 1609.344)
     .map((item) => ({
       ...item,
-      distance_meters: haversineMeters(mapCenter, { lat: item.lat, lng: item.lng }),
-      confirms: 0,
-      disputes: 0
+      distance_meters: haversineMeters(mapCenter, { lat: item.lat, lng: item.lng })
     }));
 
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
+  const selectedReportVoteMutation = useVoteMutation(selectedReport?.id ?? "");
   const hasMoreInViewport = Boolean(incidentsQuery.data?.nextCursor);
+
+  const handleSelectedReportVote = useCallback(
+    async (voteType: "confirm" | "dispute") => {
+      if (!selectedReport) return;
+      const nextStatus = selectedReport.user_vote === voteType ? null : voteType;
+
+      try {
+        await selectedReportVoteMutation.mutateAsync(nextStatus);
+      } catch (error) {
+        const status = (error as Error & { status?: number }).status;
+        if (status === 401) {
+          uiToast.info("Sign in required", "Please sign in to confirm or dispute reports.");
+          return;
+        }
+        uiToast.error((error as Error).message);
+      }
+    },
+    [selectedReport, selectedReportVoteMutation, uiToast]
+  );
 
   useEffect(() => {
     const reportIdParam = searchParams?.get("reportId");
@@ -219,9 +239,9 @@ export function HomeShell() {
           />
 
           {selectedReport ? (
-            <Link href={`/report/${selectedReport.id}`}>
-              <Card>
-                <CardContent className="space-y-2 p-4">
+            <Card>
+              <CardContent className="space-y-3 p-4">
+                <Link href={`/report/${selectedReport.id}`} className="block space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-[var(--fg)]">{selectedReport.title || "Incident report"}</p>
                     <StatusBadge status={selectedReport.status as "unverified" | "verified" | "disputed" | "resolved" | "expired"} />
@@ -232,9 +252,30 @@ export function HomeShell() {
                     <span>{formatRelativeTime(selectedReport.created_at)}</span>
                   </div>
                   <p className="text-xs text-[color:var(--muted)]">By {selectedReport.author_display_name}</p>
-                </CardContent>
-              </Card>
-            </Link>
+                </Link>
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={selectedReport.user_vote === "confirm" ? "default" : "ghost"}
+                    disabled={selectedReportVoteMutation.isPending}
+                    onClick={() => void handleSelectedReportVote("confirm")}
+                  >
+                    {selectedReportVoteMutation.isPending ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                    Confirm ({selectedReport.confirms})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={selectedReport.user_vote === "dispute" ? "destructive" : "ghost"}
+                    disabled={selectedReportVoteMutation.isPending}
+                    onClick={() => void handleSelectedReportVote("dispute")}
+                  >
+                    {selectedReportVoteMutation.isPending ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : <CircleAlert className="mr-1.5 h-4 w-4" />}
+                    Dispute ({selectedReport.disputes})
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ) : null}
         </TabsContent>
 

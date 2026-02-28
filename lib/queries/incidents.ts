@@ -18,6 +18,9 @@ type IncidentMapItem = {
   danger_radius_meters: number | null;
   danger_center_lat: number | null;
   danger_center_lng: number | null;
+  confirms: number;
+  disputes: number;
+  user_vote: "confirm" | "dispute" | null;
 };
 
 type IncidentDetail = {
@@ -103,9 +106,21 @@ function serializeMapFilterKey(filters: MapIncidentFilters) {
 }
 
 async function parseJsonOrThrow<T>(response: Response): Promise<T> {
-  const payload = await response.json().catch(() => ({}));
+  const text = await response.text();
+  let payload: any = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    // ignore
+  }
+
   if (!response.ok) {
-    throw new Error((payload as { error?: string })?.error ?? "Request failed");
+    if (process.env.NODE_ENV === "development") {
+      console.error(`[fetch error] ${response.status} ${response.url}`, text);
+      const detailedMessage = payload?.error ?? `HTTP ${response.status}: ${text.substring(0, 100)}`;
+      throw new Error(detailedMessage);
+    }
+    throw new Error(payload?.error ?? "Request failed");
   }
   return payload as T;
 }

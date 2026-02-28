@@ -40,6 +40,73 @@ type DeleteReportResponse = {
   warning?: string;
 };
 
+type VoteStatus = "confirm" | "dispute" | null;
+
+type VoteMutationResponse = {
+  ok: true;
+  vote: {
+    confirms: number;
+    disputes: number;
+    user_vote: "confirm" | "dispute" | null;
+  };
+};
+
+type IncidentVoteItem = {
+  id: string;
+  confirms: number;
+  disputes: number;
+  user_vote: "confirm" | "dispute" | null;
+  [key: string]: unknown;
+};
+
+type IncidentsMapCache = {
+  items: IncidentVoteItem[];
+  nextCursor: string | null;
+};
+
+export type ApiRequestError = Error & {
+  status?: number;
+  endpoint?: string;
+  responseBody?: string;
+};
+
+async function fetchReportDetail(reportId: string, signal?: AbortSignal) {
+  const endpoint = `/api/reports/${reportId}`;
+  const response = await fetch(endpoint, {
+    method: "GET",
+    cache: "no-store",
+    signal
+  });
+
+  const rawBody = await response.text();
+  let payload: any = {};
+  try {
+    payload = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[report-detail diagnostic]", {
+        reportId,
+        endpoint,
+        statusCode: response.status,
+        responseBody: rawBody
+      });
+    }
+
+    const message = payload?.error ?? (response.status === 403 ? "Forbidden" : "Request failed");
+    const error = new Error(message) as ApiRequestError;
+    error.status = response.status;
+    error.endpoint = endpoint;
+    error.responseBody = rawBody;
+    throw error;
+  }
+
+  return payload as ReportDetailResponse;
+}
+
 export function filtersToKey(filters: ReportFiltersInput) {
   return JSON.stringify(filters);
 }
@@ -62,7 +129,7 @@ export function useReportsQuery(filters: ReportFiltersInput) {
 export function useReportDetailQuery(id: string) {
   return useQuery({
     queryKey: queryKeys.reportDetail(id),
-    queryFn: () => jsonFetch<ReportDetailResponse>(`/api/reports/${id}`, { cache: "no-store" }),
+    queryFn: ({ signal }) => fetchReportDetail(id, signal),
     enabled: Boolean(id)
   });
 }
@@ -80,12 +147,95 @@ export function useCreateReportMutation() {
 export function useVoteMutation(reportId: string) {
   const queryClient = useQueryClient();
 
+  function getOptimisticVoteSnapshot(
+    current: { confirms: number; disputes: number; user_vote: "confirm" | "dispute" | null },
+    nextVote: VoteStatus
+  ) {
+    const confirms = current.confirms;
+    const disputes = current.disputes;
+    const previous = current.user_vote;
+
+    let nextConfirms = confirms;
+    let nextDisputes = disputes;
+
+    if (previous === "confirm") nextConfirms = Math.max(0, nextConfirms - 1);
+    if (previous === "dispute") nextDisputes = Math.max(0, nextDisputes - 1);
+
+    if (nextVote === "confirm") nextConfirms += 1;
+    if (nextVote === "dispute") nextDisputes += 1;
+
+    return {
+      confirms: nextConfirms,
+      disputes: nextDisputes,
+      user_vote: nextVote
+    };
+  }
+
   return useMutation({
-    mutationFn: (voteType: "confirm" | "dispute") =>
-      jsonFetch<{ ok: true; vote: { confirms: number; disputes: number; user_vote: "confirm" | "dispute" | null } }>(`/api/reports/${reportId}/vote`, {
+    mutationFn: (status: VoteStatus) =>
+      jsonFetch<VoteMutationResponse>(`/api/reports/${reportId}/vote`, {
         method: "POST",
-        body: JSON.stringify({ voteType })
+        body: JSON.stringify({ status })
       }),
+    onMutate: async (status) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.reportDetail(reportId) });
+      await queryClient.cancelQueries({ queryKey: ["incidents-map"] });
+
+      const previous = queryClient.getQueryData<ReportDetailResponse | undefined>(queryKeys.reportDetail(reportId));
+      const previousIncidents = queryClient.getQueriesData<IncidentsMapCache>({
+        queryKey: ["incidents-map"]
+      });
+
+      if (previous) {
+        const optimistic = getOptimisticVoteSnapshot(previous.report, status);
+        queryClient.setQueryData<ReportDetailResponse>(queryKeys.reportDetail(reportId), {
+          ...previous,
+          report: {
+            ...previous.report,
+            confirms: optimistic.confirms,
+            disputes: optimistic.disputes,
+            user_vote: optimistic.user_vote
+          }
+        });
+      }
+
+      for (const [queryKey, incidentData] of previousIncidents) {
+        if (!incidentData) continue;
+
+        const nextItems = incidentData.items.map((item) => {
+          if (item.id !== reportId) return item;
+          const optimistic = getOptimisticVoteSnapshot(
+            {
+              confirms: Number(item.confirms ?? 0),
+              disputes: Number(item.disputes ?? 0),
+              user_vote: item.user_vote ?? null
+            },
+            status
+          );
+          return {
+            ...item,
+            confirms: optimistic.confirms,
+            disputes: optimistic.disputes,
+            user_vote: optimistic.user_vote
+          };
+        });
+
+        queryClient.setQueryData(queryKey, {
+          ...incidentData,
+          items: nextItems
+        });
+      }
+
+      return { previous, previousIncidents };
+    },
+    onError: (_error, _status, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.reportDetail(reportId), context.previous);
+      }
+      for (const [queryKey, snapshot] of context?.previousIncidents ?? []) {
+        queryClient.setQueryData(queryKey, snapshot);
+      }
+    },
     onSuccess: (result) => {
       queryClient.setQueryData<ReportDetailResponse | undefined>(queryKeys.reportDetail(reportId), (current) => {
         if (!current) return current;
@@ -100,8 +250,32 @@ export function useVoteMutation(reportId: string) {
           }
         };
       });
+
+      const incidentQueries = queryClient.getQueriesData<IncidentsMapCache>({
+        queryKey: ["incidents-map"]
+      });
+
+      for (const [queryKey, incidentData] of incidentQueries) {
+        if (!incidentData) continue;
+        queryClient.setQueryData(queryKey, {
+          ...incidentData,
+          items: incidentData.items.map((item) =>
+            item.id === reportId
+              ? {
+                  ...item,
+                  confirms: result.vote.confirms,
+                  disputes: result.vote.disputes,
+                  user_vote: result.vote.user_vote
+                }
+              : item
+          )
+        });
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
+      void queryClient.invalidateQueries({ queryKey: ["incidents-map"] });
     }
   });
 }
@@ -126,14 +300,14 @@ export function useDeleteReportMutation(reportId: string) {
 
   return useMutation({
     mutationFn: () =>
-      jsonFetch<DeleteReportResponse>("/api/reports/delete", {
-        method: "POST",
-        body: JSON.stringify({ reportId })
+      jsonFetch<DeleteReportResponse>(`/api/reports/${reportId}`, {
+        method: "DELETE",
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-reports"] });
+      void queryClient.invalidateQueries({ queryKey: ["incidents-map"] });
     }
   });
 }

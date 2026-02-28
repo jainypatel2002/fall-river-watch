@@ -15,7 +15,7 @@ import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useIncidentDetailQuery } from "@/lib/queries/incidents";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { queryKeys } from "@/lib/queries/keys";
-import { useDeleteReportMutation, useReportDetailQuery, useResolveMutation, useVoteMutation } from "@/lib/queries/reports";
+import { type ApiRequestError, useDeleteReportMutation, useReportDetailQuery, useResolveMutation, useVoteMutation } from "@/lib/queries/reports";
 import { metersToMiles } from "@/lib/utils/geo";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime, prettyCategory } from "@/lib/utils/format";
@@ -49,7 +49,7 @@ export function ReportDetail({ reportId }: { reportId: string }) {
       if (user) {
         const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
         if (active && profile) {
-          setIsAdmin(profile.role === "admin" || profile.role === "mod");
+          setIsAdmin(profile.role === "admin");
         }
       }
     });
@@ -91,12 +91,17 @@ export function ReportDetail({ reportId }: { reportId: string }) {
   }
 
   if (detailQuery.error || !detailQuery.data) {
-    const message = (detailQuery.error as Error)?.message ?? "Report not found or deleted.";
+    const error = detailQuery.error as ApiRequestError | null;
+    const status = error?.status;
+    const isForbidden = status === 403 || /forbidden/i.test(error?.message ?? "");
+    const isNotFound = status === 404;
+    const title = isForbidden ? "Forbidden" : isNotFound ? "Report not found" : "Unable to load report";
+    const message = error?.message ?? (isNotFound ? "Report not found or deleted." : "Failed to load report detail.");
 
     return (
       <Card>
         <CardHeader>
-          <CardTitle style={{ fontFamily: "var(--font-heading)" }}>Report not found</CardTitle>
+          <CardTitle style={{ fontFamily: "var(--font-heading)" }}>{title}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="rounded-2xl border border-rose-400/40 bg-rose-400/10 p-4 text-sm text-rose-100">{message}</p>
@@ -116,6 +121,7 @@ export function ReportDetail({ reportId }: { reportId: string }) {
     report.media.map((item) => supabase.storage.from("report-media").getPublicUrl(item.storage_path).data.publicUrl);
   const canConfirmDelete = deleteConfirmText.trim() === "DELETE";
   const canVote = isAuthenticated === true;
+  const canManageReport = report.is_owner || isAdmin;
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const lat = incident?.lat ?? report.display_lat;
@@ -153,9 +159,15 @@ export function ReportDetail({ reportId }: { reportId: string }) {
     }
 
     try {
-      await voteMutation.mutateAsync(voteType);
-      uiToast.success("Vote submitted");
+      const nextStatus = report.user_vote === voteType ? null : voteType;
+      await voteMutation.mutateAsync(nextStatus);
+      uiToast.success(nextStatus ? "Vote submitted" : "Vote removed");
     } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 401) {
+        uiToast.info("Sign in required", "Please sign in to confirm or dispute reports.");
+        return;
+      }
       uiToast.error((error as Error).message);
     }
   }
@@ -167,12 +179,12 @@ export function ReportDetail({ reportId }: { reportId: string }) {
           Back to map
         </Link>
         <div className="flex items-center gap-2">
-          {report.can_resolve || isAdmin ? (
+          {canManageReport ? (
             <Link href={`/report/${report.id}/edit`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 px-3")}>
               Edit
             </Link>
           ) : null}
-          {report.can_resolve || isAdmin ? (
+          {canManageReport ? (
             <Button
               variant="destructive"
               size="sm"
@@ -281,7 +293,7 @@ export function ReportDetail({ reportId }: { reportId: string }) {
             {report.user_vote ? <p className="text-xs text-[color:var(--muted)]">Your current vote: {report.user_vote}.</p> : null}
           </div>
 
-          {report.can_resolve || isAdmin ? (
+          {canManageReport ? (
             <Button
               variant="outline"
               onClick={async () => {

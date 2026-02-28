@@ -11,7 +11,10 @@ export async function jsonFetch<T>(input: RequestInfo | URL, init?: RequestInit)
 
   if (!response.ok) {
     const message = payload?.error ?? "Request failed";
-    throw new Error(message);
+    const error = new Error(message) as Error & { status?: number; payload?: unknown };
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
 
   return payload as T;
