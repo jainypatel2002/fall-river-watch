@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { notificationSettingsSchema } from "@/lib/schemas/report";
 import { requireAuth } from "@/lib/supabase/auth";
+import { normalizeTo24HourHHMM } from "@/lib/time/normalizeQuietHours";
 
 export async function GET() {
   const auth = await requireAuth();
@@ -31,6 +32,17 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
+
+    // Fallback normalization for quiet hours in case client sends AM/PM format
+    if (body?.quiet_hours) {
+      if (typeof body.quiet_hours.start === "string") {
+        body.quiet_hours.start = normalizeTo24HourHHMM(body.quiet_hours.start) || body.quiet_hours.start;
+      }
+      if (typeof body.quiet_hours.end === "string") {
+        body.quiet_hours.end = normalizeTo24HourHHMM(body.quiet_hours.end) || body.quiet_hours.end;
+      }
+    }
+
     const payload = notificationSettingsSchema.parse(body);
 
     const { error } = await auth.supabase.from("notification_subscriptions").upsert(

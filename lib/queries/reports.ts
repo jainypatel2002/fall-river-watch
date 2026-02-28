@@ -82,11 +82,24 @@ export function useVoteMutation(reportId: string) {
 
   return useMutation({
     mutationFn: (voteType: "confirm" | "dispute") =>
-      jsonFetch<{ ok: true }>(`/api/reports/${reportId}/vote`, {
+      jsonFetch<{ ok: true; vote: { confirms: number; disputes: number; user_vote: "confirm" | "dispute" | null } }>(`/api/reports/${reportId}/vote`, {
         method: "POST",
         body: JSON.stringify({ voteType })
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      queryClient.setQueryData<ReportDetailResponse | undefined>(queryKeys.reportDetail(reportId), (current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          report: {
+            ...current.report,
+            confirms: result.vote.confirms,
+            disputes: result.vote.disputes,
+            user_vote: result.vote.user_vote
+          }
+        };
+      });
       void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
     }

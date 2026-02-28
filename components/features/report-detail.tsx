@@ -19,6 +19,7 @@ import { useDeleteReportMutation, useReportDetailQuery, useResolveMutation, useV
 import { metersToMiles } from "@/lib/utils/geo";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime, prettyCategory } from "@/lib/utils/format";
+import { INCIDENT_CATEGORY_META, type IncidentCategoryKey } from "@/lib/incidents/categories";
 
 export function ReportDetail({ reportId }: { reportId: string }) {
   const router = useRouter();
@@ -34,6 +35,20 @@ export function ReportDetail({ reportId }: { reportId: string }) {
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    void supabase.auth.getUser().then((result: { data?: { user?: unknown } }) => {
+      if (!active) return;
+      setIsAuthenticated(Boolean(result.data?.user));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
   useEffect(() => {
     const channel = supabase
@@ -91,6 +106,15 @@ export function ReportDetail({ reportId }: { reportId: string }) {
     incident?.attachments?.map((item) => item.signedUrl) ??
     report.media.map((item) => supabase.storage.from("report-media").getPublicUrl(item.storage_path).data.publicUrl);
   const canConfirmDelete = deleteConfirmText.trim() === "DELETE";
+  const canVote = isAuthenticated === true;
+
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const lat = incident?.lat ?? report.display_lat;
+  const lng = incident?.lng ?? report.display_lng;
+  const categoryColor = INCIDENT_CATEGORY_META[report.category as IncidentCategoryKey]?.color?.replace('#', '') || 'f59e0b';
+  const staticMapUrl = mapboxToken
+    ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-s+${categoryColor}(${lng},${lat})/${lng},${lat},13.5,0,0/800x200@2x?access_token=${mapboxToken}`
+    : null;
 
   async function handleDeleteReport() {
     if (!canConfirmDelete || deleteMutation.isPending) return;
@@ -108,6 +132,20 @@ export function ReportDetail({ reportId }: { reportId: string }) {
       setDeleteConfirmText("");
       router.push("/");
       router.refresh();
+    } catch (error) {
+      uiToast.error((error as Error).message);
+    }
+  }
+
+  async function handleVote(voteType: "confirm" | "dispute") {
+    if (!canVote) {
+      uiToast.info("Sign in required", "Please sign in to confirm or dispute reports.");
+      return;
+    }
+
+    try {
+      await voteMutation.mutateAsync(voteType);
+      uiToast.success("Vote submitted");
     } catch (error) {
       uiToast.error((error as Error).message);
     }
@@ -168,19 +206,38 @@ export function ReportDetail({ reportId }: { reportId: string }) {
               <p className="text-xs text-[color:var(--muted)]">Disputes</p>
               <p className="font-semibold text-[var(--fg)]">{report.disputes}</p>
             </div>
-            <div className="rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.7)] p-3 text-sm">
-              <p className="text-xs text-[color:var(--muted)]">Approx location</p>
-              <p className="font-semibold text-[var(--fg)]">
-                {(incident?.lat ?? report.display_lat).toFixed(4)}, {(incident?.lng ?? report.display_lng).toFixed(4)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.7)] p-3 text-sm">
-              <p className="text-xs text-[color:var(--muted)]">Danger radius</p>
-              <p className="font-semibold text-[var(--fg)]">
-                {incident?.danger_radius_meters ? `${metersToMiles(incident.danger_radius_meters).toFixed(2)} mi` : "None"}
-              </p>
-            </div>
+            {incident?.danger_radius_meters ? (
+              <div className="rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.7)] p-3 text-sm">
+                <p className="text-xs text-[color:var(--muted)]">Danger radius</p>
+                <p className="font-semibold text-[var(--fg)]">
+                  {metersToMiles(incident.danger_radius_meters).toFixed(2)} mi
+                </p>
+              </div>
+            ) : null}
           </div>
+
+          {staticMapUrl ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--muted)]">Location (Approximate)</p>
+              <Link
+                href={`/?reportId=${report.id}`}
+                className="group relative block overflow-hidden rounded-xl border border-[var(--border)]"
+              >
+                <img
+                  src={staticMapUrl}
+                  alt="Map Location Preview"
+                  className="h-36 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  loading="lazy"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(6,9,15,0.8)] to-transparent p-3 pt-8">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-white shadow-black drop-shadow-md">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Tap to open main map
+                  </div>
+                </div>
+              </Link>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--muted)]">Community vote</p>
@@ -188,15 +245,8 @@ export function ReportDetail({ reportId }: { reportId: string }) {
               <Button
                 variant={report.user_vote === "confirm" ? "default" : "ghost"}
                 className="rounded-xl"
-                onClick={async () => {
-                  try {
-                    await voteMutation.mutateAsync("confirm");
-                    uiToast.success("Vote submitted");
-                  } catch (error) {
-                    uiToast.error((error as Error).message);
-                  }
-                }}
-                disabled={voteMutation.isPending || !!report.user_vote}
+                onClick={() => void handleVote("confirm")}
+                disabled={voteMutation.isPending || !canVote}
               >
                 <CheckCircle2 className="mr-1.5 h-4 w-4" />
                 Confirm
@@ -204,21 +254,22 @@ export function ReportDetail({ reportId }: { reportId: string }) {
               <Button
                 variant={report.user_vote === "dispute" ? "destructive" : "ghost"}
                 className="rounded-xl"
-                onClick={async () => {
-                  try {
-                    await voteMutation.mutateAsync("dispute");
-                    uiToast.success("Vote submitted");
-                  } catch (error) {
-                    uiToast.error((error as Error).message);
-                  }
-                }}
-                disabled={voteMutation.isPending || !!report.user_vote}
+                onClick={() => void handleVote("dispute")}
+                disabled={voteMutation.isPending || !canVote}
               >
                 <CircleAlert className="mr-1.5 h-4 w-4" />
                 Dispute
               </Button>
             </div>
-            {report.user_vote ? <p className="text-xs text-[color:var(--muted)]">You already voted: {report.user_vote}.</p> : null}
+            {isAuthenticated === false ? (
+              <p className="text-xs text-[color:var(--muted)]">
+                <Link href="/auth" className="underline underline-offset-4">
+                  Sign in
+                </Link>{" "}
+                to confirm or dispute this report.
+              </p>
+            ) : null}
+            {report.user_vote ? <p className="text-xs text-[color:var(--muted)]">Your current vote: {report.user_vote}.</p> : null}
           </div>
 
           {report.can_resolve ? (

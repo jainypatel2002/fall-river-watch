@@ -7,6 +7,7 @@ import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/server/curso
 import { getTimeWindowHours, runReportExpiration } from "@/lib/server/reports";
 import { requireAuth } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { dispatchNotifications } from "@/lib/notifications/dispatch";
 
 function parseBbox(raw: string | null) {
   if (!raw) return null;
@@ -207,6 +208,16 @@ export async function POST(request: Request) {
       danger_center_lng: number | null;
       top_level_comment_count: number;
     };
+
+    // Fire-and-forget background push/email notifications
+    dispatchNotifications({
+      incidentId: detail.id,
+      category: detail.category,
+      title: detail.title,
+      description: detail.description,
+      lat: detail.lat,
+      lng: detail.lng
+    }).catch((err) => console.error("[Dispatch error]", err));
 
     return NextResponse.json(
       {

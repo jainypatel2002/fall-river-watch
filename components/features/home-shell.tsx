@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, ShieldAlert } from "lucide-react";
 import { CategoryLayerControl } from "@/components/map/category-layer-control";
 import { LocationSearch } from "@/components/map/LocationSearch";
@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/features/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
+import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { useIncidentsMapQuery } from "@/lib/queries/incidents";
 import { useMapSearchStore } from "@/lib/store/map-search-store";
@@ -48,6 +49,8 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 
 export function HomeShell() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabase = useSupabaseBrowser();
   const uiToast = useUiToast();
   useReportsRealtime(true);
 
@@ -98,6 +101,34 @@ export function HomeShell() {
 
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
   const hasMoreInViewport = Boolean(incidentsQuery.data?.nextCursor);
+
+  useEffect(() => {
+    const reportIdParam = searchParams?.get("reportId");
+    if (!reportIdParam) return;
+
+    if (selectedReportId !== reportIdParam) {
+      setSelectedReportId(reportIdParam);
+    }
+
+    let active = true;
+    async function fetchAndCenter() {
+      const existing = incidentsQuery.data?.items.find((r) => r.id === reportIdParam);
+      if (existing) {
+        setMapCenter({ lat: existing.lat, lng: existing.lng });
+        return;
+      }
+      const { data } = await supabase.from("reports").select("display_lat, display_lng").eq("id", reportIdParam).single();
+      if (active && data) {
+        setMapCenter({ lat: data.display_lat, lng: data.display_lng });
+      }
+    }
+
+    fetchAndCenter();
+
+    return () => {
+      active = false;
+    };
+  }, [searchParams, selectedReportId, setSelectedReportId, supabase, setMapCenter, incidentsQuery.data?.items]);
 
   const onSelectLocation = useCallback(
     (location: { id: string; label: string; lat: number; lng: number }) => {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { Suspense, useSyncExternalStore } from "react";
 import { HomeShell } from "@/components/features/home-shell";
 
-const subscribe = () => () => {};
+const subscribe = () => () => { };
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
@@ -14,5 +14,9 @@ export function HomeShellHydrationSafe() {
     return <div className="shimmer h-[62vh] rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />;
   }
 
-  return <HomeShell />;
+  return (
+    <Suspense fallback={<div className="shimmer h-[62vh] rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />}>
+      <HomeShell />
+    </Suspense>
+  );
 }

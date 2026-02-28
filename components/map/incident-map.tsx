@@ -225,11 +225,6 @@ export default function IncidentMap({
     return ["match", ["get", "category"], ...entries, "#f59e0b"] as mapboxgl.Expression;
   }, []);
 
-  const categoryGlyphExpression = useMemo(() => {
-    const entries = INCIDENT_CATEGORIES.flatMap((category) => [category, INCIDENT_CATEGORY_META[category].mapGlyph]);
-    return ["match", ["get", "category"], ...entries, "●"] as mapboxgl.Expression;
-  }, []);
-
   const geoJson = useMemo(
     () => ({
       type: "FeatureCollection" as const,
@@ -359,6 +354,20 @@ export default function IncidentMap({
     };
 
     const handleMapLoad = () => {
+      // Inject our custom category SVGs as map images
+      INCIDENT_CATEGORIES.forEach((key) => {
+        const svg = encodeURIComponent(INCIDENT_CATEGORY_META[key].iconSvg);
+        const dataUri = `data:image/svg+xml;charset=utf-8,${svg}`;
+        const img = new Image(16, 16);
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          if (mapRef.current && !mapRef.current.hasImage(key)) {
+            mapRef.current.addImage(key, img);
+          }
+        };
+        img.src = dataUri;
+      });
+
       map.addSource(SOURCE_ID, {
         type: "geojson",
         data: geoJsonRef.current,
@@ -401,7 +410,7 @@ export default function IncidentMap({
         filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-color": categoryColorExpression,
-          "circle-radius": 10,
+          "circle-radius": 14,
           "circle-stroke-width": 1.8,
           "circle-stroke-color": "#ecfeff"
         }
@@ -413,13 +422,10 @@ export default function IncidentMap({
         source: SOURCE_ID,
         filter: ["!", ["has", "point_count"]],
         layout: {
-          "text-field": categoryGlyphExpression,
-          "text-size": 11,
-          "text-allow-overlap": true,
-          "text-ignore-placement": true
-        },
-        paint: {
-          "text-color": "#ffffff"
+          "icon-image": ["get", "category"],
+          "icon-size": 1,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true
         }
       });
 
@@ -557,7 +563,7 @@ export default function IncidentMap({
       pendingSearchTargetRef.current = null;
       lastAppliedSearchTargetIdRef.current = null;
     };
-  }, [categoryColorExpression, categoryGlyphExpression, flyToLocation, token, updateSearchPin]);
+  }, [categoryColorExpression, flyToLocation, token, updateSearchPin]);
 
   useEffect(() => {
     const map = mapRef.current;

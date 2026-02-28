@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Plus, ShieldCheck } from "lucide-react";
+import { Bell, ShieldCheck } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -47,10 +47,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <Link href="/auth" className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "hidden sm:inline-flex")}>
               Account
-            </Link>
-            <Link href="/report/new" className={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-1.5")}>
-              <Plus className="h-4 w-4" />
-              Report
             </Link>
           </div>
         </div>

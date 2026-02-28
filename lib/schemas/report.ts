@@ -87,7 +87,10 @@ export const notificationSettingsSchema = z.object({
       end: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/)
     })
     .default({ start: "22:00", end: "07:00" }),
-  enabled: z.boolean().default(true)
+  enabled: z.boolean().default(true),
+  timezone: z.string().optional(),
+  center_lat: z.number().optional(),
+  center_lng: z.number().optional()
 });
 
 export type CreateReportInput = z.infer<typeof createReportSchema>;

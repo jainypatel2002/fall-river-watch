@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,9 @@ import { useNotificationSettingsMutation, useNotificationSettingsQuery } from "@
 import { type NotificationSettingsInput } from "@/lib/schemas/report";
 import { INCIDENT_CATEGORIES } from "@/lib/utils/constants";
 import { prettyCategory } from "@/lib/utils/format";
+import { subscribeToPush, checkPushActive } from "@/lib/push/subscribe";
+import { useUiStore } from "@/lib/store/ui-store";
+import { normalizeTo24HourHHMM } from "@/lib/time/normalizeQuietHours";
 
 const defaultSettings: NotificationSettingsInput = {
   channels: ["email"],
@@ -28,8 +31,29 @@ export function NotificationSettingsForm() {
   const mutation = useNotificationSettingsMutation();
   const uiToast = useUiToast();
   const [draft, setDraft] = useState<NotificationSettingsInput | null>(null);
+  const [pushStatusMsg, setPushStatusMsg] = useState("");
+  const [serverConfig, setServerConfig] = useState<{ emailConfigured: boolean; pushConfigured: boolean } | null>(null);
+  const userLocation = useUiStore((state) => state.userLocation);
 
-  const persisted = settingsQuery.data?.settings ?? null;
+  useEffect(() => {
+    fetch("/api/notifications/config")
+      .then(res => res.json())
+      .then(data => setServerConfig(data))
+      .catch(console.error);
+  }, []);
+
+  const persisted = useMemo(() => {
+    if (!settingsQuery.data?.settings) return null;
+    const s = { ...settingsQuery.data.settings };
+    if (s.quiet_hours) {
+      s.quiet_hours = {
+        start: normalizeTo24HourHHMM(s.quiet_hours.start) ?? "22:00",
+        end: normalizeTo24HourHHMM(s.quiet_hours.end) ?? "07:00",
+      };
+    }
+    return s;
+  }, [settingsQuery.data?.settings]);
+
   const settings = draft ?? persisted ?? defaultSettings;
 
   function updateDraft(mutator: (current: NotificationSettingsInput) => NotificationSettingsInput) {
@@ -37,8 +61,45 @@ export function NotificationSettingsForm() {
   }
 
   async function save() {
+    let finalSettings: NotificationSettingsInput = { ...settings };
+
+    const start24 = normalizeTo24HourHHMM(finalSettings.quiet_hours.start);
+    const end24 = normalizeTo24HourHHMM(finalSettings.quiet_hours.end);
+
+    if (!start24 || !end24) {
+      uiToast.error("Invalid time. Please use a valid time.");
+      return;
+    }
+
+    finalSettings.quiet_hours = {
+      start: start24,
+      end: end24
+    };
+
+    // Automatically inject the latest timezone to be accurate for quiet hours
+    finalSettings.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Capture user's approximate location if available so Haversine dispatcher works.
+    if (userLocation && !finalSettings.center_lat) {
+      finalSettings.center_lat = userLocation.lat;
+      finalSettings.center_lng = userLocation.lng;
+    }
+
+    // Process push subscription logic if active and channels specifically requested Web Push
+    if (finalSettings.enabled && finalSettings.channels.includes("web_push")) {
+      const sub = await subscribeToPush();
+      if (!sub.success) {
+        setPushStatusMsg(sub.message || "Push inactive");
+        if (sub.message !== "Server configuration missing.") {
+          uiToast.error(`Web Push issue: ${sub.message}`);
+        }
+      } else {
+        setPushStatusMsg("Active on this device");
+      }
+    }
+
     try {
-      await mutation.mutateAsync(settings);
+      await mutation.mutateAsync(finalSettings);
       uiToast.success("Notification preferences saved");
       setDraft(null);
     } catch (error) {
@@ -49,8 +110,16 @@ export function NotificationSettingsForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle style={{ fontFamily: "var(--font-heading)" }}>Notifications (Scaffold)</CardTitle>
-        <CardDescription>Email and web push delivery providers are intentionally stubbed for MVP.</CardDescription>
+        <CardTitle style={{ fontFamily: "var(--font-heading)" }}>Notifications</CardTitle>
+        <CardDescription>
+          Configure how and when you receive critical alerts locally.
+          {serverConfig && !serverConfig.emailConfigured && !serverConfig.pushConfigured && (
+            <span className="block mt-2 text-xs font-medium text-destructive">Server configuration missing. Notifications may not deliver.</span>
+          )}
+          {pushStatusMsg && (
+            <span className="block mt-2 text-xs font-medium text-amber-500">{pushStatusMsg}</span>
+          )}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.72)] p-3">
@@ -85,11 +154,10 @@ export function NotificationSettingsForm() {
                       return { ...current, channels: [...current.channels, channel.id as "email" | "web_push"] };
                     });
                   }}
-                  className={`rounded-xl border px-3 py-1.5 text-sm ${
-                    active
-                      ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.15)] text-[var(--fg)]"
-                      : "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[color:var(--muted)]"
-                  }`}
+                  className={`rounded-xl border px-3 py-1.5 text-sm ${active
+                    ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.15)] text-[var(--fg)]"
+                    : "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[color:var(--muted)]"
+                    }`}
                 >
                   {channel.label}
                 </button>
@@ -129,11 +197,10 @@ export function NotificationSettingsForm() {
                       return { ...current, categories: [...current.categories, category] };
                     })
                   }
-                  className={`rounded-full border px-3 py-1 text-xs ${
-                    selected
-                      ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.15)] text-[var(--fg)]"
-                      : "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[color:var(--muted)]"
-                  }`}
+                  className={`rounded-full border px-3 py-1 text-xs ${selected
+                    ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.15)] text-[var(--fg)]"
+                    : "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[color:var(--muted)]"
+                    }`}
                 >
                   {prettyCategory(category)}
                 </button>

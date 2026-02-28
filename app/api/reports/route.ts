@@ -3,6 +3,7 @@ import { createReportSchema } from "@/lib/schemas/report";
 import { requireAuth } from "@/lib/supabase/auth";
 import { enforceDailyLimit } from "@/lib/server/rate-limit";
 import { runReportExpiration } from "@/lib/server/reports";
+import { dispatchNotifications } from "@/lib/notifications/dispatch";
 
 export async function POST(request: Request) {
   const auth = await requireAuth();
@@ -79,6 +80,16 @@ export async function POST(request: Request) {
     }
 
     await runReportExpiration(auth.supabase);
+
+    // Fire and forget dispatch logic asynchronously to not block the client UI response
+    dispatchNotifications({
+      incidentId: reportId,
+      category: payload.category,
+      title: payload.title?.trim() ? payload.title.trim() : null,
+      description: payload.description,
+      lat: payload.location.lat,
+      lng: payload.location.lng,
+    }).catch((e) => console.error("Dispatch background error:", e));
 
     return NextResponse.json({ id: reportId }, { status: 201 });
   } catch (error) {
