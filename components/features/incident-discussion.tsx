@@ -47,7 +47,8 @@ function ReplyThread({
   pendingReplies,
   canWrite,
   onTypingStart,
-  onTypingStop
+  onTypingStop,
+  isAdmin
 }: {
   parentComment: IncidentComment;
   incidentId: string;
@@ -59,6 +60,7 @@ function ReplyThread({
   canWrite: boolean;
   onTypingStart: () => void;
   onTypingStop: () => void;
+  isAdmin: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState<boolean>(!parentComment.replyCount || parentComment.replyCount <= 2);
   const [replyBody, setReplyBody] = useState("");
@@ -130,12 +132,12 @@ function ReplyThread({
             {isExpanded ? "Collapse thread" : `View ${showRepliesCount} replies`}
           </button>
         )}
-        {parentComment.is_owner ? (
+        {parentComment.is_owner || isAdmin ? (
           <button type="button" onClick={() => onDelete(parentComment.id)} className="hover:text-[var(--fg)] transition-colors">
             Delete
           </button>
         ) : null}
-        {canWrite && !parentComment.is_owner ? (
+        {canWrite && !parentComment.is_owner && !isAdmin ? (
           <button type="button" onClick={() => onReport(parentComment.id)} className="hover:text-[var(--fg)] transition-colors">
             Report
           </button>
@@ -197,12 +199,12 @@ function ReplyThread({
               ) : null}
 
               <div className="mt-1 ml-7 flex items-center gap-3 text-[11px] text-[color:var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity">
-                {reply.is_owner ? (
+                {reply.is_owner || isAdmin ? (
                   <button type="button" onClick={() => onDelete(reply.id)} className="hover:text-[var(--fg)]">
                     Delete
                   </button>
                 ) : null}
-                {canWrite && !reply.is_owner ? (
+                {canWrite && !reply.is_owner && !isAdmin ? (
                   <button type="button" onClick={() => onReport(reply.id)} className="hover:text-[var(--fg)]">
                     Report
                   </button>
@@ -248,7 +250,7 @@ export function IncidentDiscussion({ incidentId, topLevelCount }: { incidentId: 
   const reportCommentMutation = useReportCommentMutation();
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
 
   const [body, setBody] = useState("");
   const [isComposerExpanded, setIsComposerExpanded] = useState(false);
@@ -274,10 +276,11 @@ export function IncidentDiscussion({ incidentId, topLevelCount }: { incidentId: 
 
       if (user) {
         // Fetch profile to broadcast real display name
-        const { data: profileData } = await supabase.from("profiles").select("display_name").eq("id", user.id).single();
+        const { data: profileData } = await supabase.from("profiles").select("display_name, role").eq("id", user.id).single();
         setCurrentUser({
           id: user.id,
-          name: profileData?.display_name || "Neighbor"
+          name: profileData?.display_name || "Neighbor",
+          role: profileData?.role || "user"
         });
       }
     });
@@ -640,6 +643,7 @@ export function IncidentDiscussion({ incidentId, topLevelCount }: { incidentId: 
                   canWrite={isAuthenticated}
                   onTypingStart={() => void broadcastTyping(true)}
                   onTypingStop={() => void broadcastTyping(false)}
+                  isAdmin={currentUser?.role === "admin" || currentUser?.role === "mod"}
                 />
               </div>
             </div>

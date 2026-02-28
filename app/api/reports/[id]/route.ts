@@ -1,42 +1,53 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { reportDetailResponseSchema } from "@/lib/schemas/api";
-import { runReportExpiration } from "@/lib/server/reports";
+import { z } from "zod";
+import { requireAuth } from "@/lib/supabase/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const ANONYMOUS_REPORTER_ID = "00000000-0000-0000-0000-000000000000";
+export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth.response) return auth.response;
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  const supabase = await createSupabaseServerClient();
+  try {
+    const { id } = await context.params;
+    const body = await request.json();
 
-  await runReportExpiration(supabase);
+    const { data: profile } = await auth.supabase.from("profiles").select("role").eq("id", auth.user.id).single();
+    const isAdmin = profile?.role === "admin" || profile?.role === "mod";
+    const activeClient = isAdmin ? createSupabaseAdminClient() : auth.supabase;
 
-  const { data, error } = await supabase.rpc("get_report_detail", { p_report_id: id });
+    // Build update object based on allowed fields (this assumes title and description only for brevity based on existing flows, but can be expanded)
+    const updateData: any = {};
+    if (typeof body.title !== "undefined") updateData.title = body.title;
+    if (typeof body.description !== "undefined") updateData.description = body.description;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Add additional fields here if your schema allows it. We don't want to blindly pass body to update.
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const { error } = await activeClient
+      .from("reports")
+      .update(updateData)
+      .eq("id", id)
+      // If not admin, the row-level security on the `auth.supabase` client handles enforcing ownership, 
+      // but conditionally applying it guarantees no accidents.
+      .eq(isAdmin ? "" : "reporter_id", isAdmin ? "" : auth.user.id);
+
+    // Because supabase ignores empty match strings, we conditionally omit the eq if admin
+    let query = activeClient.from("reports").update(updateData).eq("id", id);
+    if (!isAdmin) {
+      query = query.eq("reporter_id", auth.user.id);
+    }
+
+    const { error: finalError } = await query;
+
+    if (finalError) {
+      return NextResponse.json({ error: finalError.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid request";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
-
-  if (!data || data.length === 0) {
-    return NextResponse.json({ error: "Report not found" }, { status: 404 });
-  }
-
-  const { data: reportRow, error: reportError } = await supabase.from("reports").select("is_anonymous").eq("id", id).maybeSingle();
-  if (reportError) {
-    return NextResponse.json({ error: reportError.message }, { status: 500 });
-  }
-
-  const row = data[0] as Record<string, unknown>;
-  const sanitized = reportRow?.is_anonymous
-    ? {
-        ...row,
-        reporter_id: ANONYMOUS_REPORTER_ID
-      }
-    : row;
-
-  const validated = reportDetailResponseSchema.parse({
-    report: sanitized
-  });
-
-  return NextResponse.json(validated);
 }

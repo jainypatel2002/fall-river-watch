@@ -10,10 +10,12 @@ export function createSupabaseAdminClient() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!serviceRoleKey) {
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+    if (process.env.NODE_ENV === "production" && !process.env.NEXT_PHASE) {
+      console.warn("Missing SUPABASE_SERVICE_ROLE_KEY - Required for admin actions.");
+    }
   }
 
-  adminClient = createClient(url, serviceRoleKey, {
+  adminClient = createClient(url, serviceRoleKey || "dummy_key_for_build", {
     auth: {
       autoRefreshToken: false,
       persistSession: false

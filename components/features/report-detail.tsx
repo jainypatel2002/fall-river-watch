@@ -36,13 +36,22 @@ export function ReportDetail({ reportId }: { reportId: string }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    void supabase.auth.getUser().then((result: { data?: { user?: unknown } }) => {
+    void supabase.auth.getUser().then(async (result: { data?: { user?: any } }) => {
       if (!active) return;
-      setIsAuthenticated(Boolean(result.data?.user));
+      const user = result.data?.user;
+      setIsAuthenticated(Boolean(user));
+
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+        if (active && profile) {
+          setIsAdmin(profile.role === "admin" || profile.role === "mod");
+        }
+      }
     });
 
     return () => {
@@ -158,12 +167,12 @@ export function ReportDetail({ reportId }: { reportId: string }) {
           Back to map
         </Link>
         <div className="flex items-center gap-2">
-          {report.can_resolve ? (
+          {report.can_resolve || isAdmin ? (
             <Link href={`/report/${report.id}/edit`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 px-3")}>
               Edit
             </Link>
           ) : null}
-          {report.can_resolve ? (
+          {report.can_resolve || isAdmin ? (
             <Button
               variant="destructive"
               size="sm"
@@ -272,7 +281,7 @@ export function ReportDetail({ reportId }: { reportId: string }) {
             {report.user_vote ? <p className="text-xs text-[color:var(--muted)]">Your current vote: {report.user_vote}.</p> : null}
           </div>
 
-          {report.can_resolve ? (
+          {report.can_resolve || isAdmin ? (
             <Button
               variant="outline"
               onClick={async () => {
