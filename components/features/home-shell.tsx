@@ -14,9 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
+import { useWeatherTarget } from "@/hooks/use-weather-target";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
 import { useIncidentsMapQuery } from "@/lib/queries/incidents";
+import { useWeatherQuery } from "@/lib/queries/weather";
 import { useVoteMutation } from "@/lib/queries/reports";
 import { useMapSearchStore } from "@/lib/store/map-search-store";
 import { useUiStore } from "@/lib/store/ui-store";
@@ -70,6 +72,8 @@ export function HomeShell() {
     setMapCenter,
     setMapViewport,
     userLocation,
+    showWeatherAlertsLayer,
+    openWeatherPanel,
     setUserLocation,
     geolocationDenied,
     setGeolocationDenied
@@ -79,6 +83,12 @@ export function HomeShell() {
   const setSearchQuery = useMapSearchStore((state) => state.setSearchQuery);
   const setSelectedLocation = useMapSearchStore((state) => state.setSelectedLocation);
   const clearSelectedLocation = useMapSearchStore((state) => state.clearSelectedLocation);
+  const weatherTarget = useWeatherTarget();
+  const weatherQuery = useWeatherQuery({
+    target: weatherTarget.coordinates,
+    source: weatherTarget.source,
+    enabled: activeTab === "map"
+  });
 
   const mapFilters = useMemo(
     () => ({
@@ -190,6 +200,13 @@ export function HomeShell() {
         </div>
       ) : null}
 
+      {showWeatherAlertsLayer && weatherQuery.error ? (
+        <div className="flex items-center gap-2 rounded-2xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-100">
+          <AlertCircle className="h-4 w-4" />
+          Weather unavailable. Alert overlays are temporarily disabled.
+        </div>
+      ) : null}
+
       {hasMoreInViewport ? (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100">Zoom in to see more incidents in this area.</div>
       ) : null}
@@ -212,8 +229,12 @@ export function HomeShell() {
               center={mapCenter}
               userLocation={userLocation}
               isActive={activeTab === "map"}
+              weatherAlerts={weatherQuery.data?.alerts ?? []}
+              weatherAlertCenter={weatherTarget.coordinates}
+              showWeatherAlerts={showWeatherAlertsLayer}
               searchTarget={selectedSearchLocation}
               onSelectReport={setSelectedReportId}
+              onOpenWeatherAlerts={() => openWeatherPanel("alerts")}
               onOpenReport={(id) => {
                 setSelectedReportId(id);
                 router.push(`/report/${id}`);
@@ -229,7 +250,11 @@ export function HomeShell() {
                 uiToast.info("Location unavailable", message);
               }}
             />
-            <CategoryLayerControl />
+            <CategoryLayerControl
+              weatherAlertsCount={weatherQuery.data?.alerts.length ?? 0}
+              weatherLoading={weatherQuery.isFetching && !weatherQuery.data}
+              onOpenWeatherPanel={() => openWeatherPanel("overview")}
+            />
           </div>
 
           {incidentsQuery.isFetching ? <p className="text-xs text-[color:var(--muted)]">Refreshing map incidents...</p> : null}

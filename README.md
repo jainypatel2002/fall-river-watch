@@ -32,6 +32,7 @@ Required:
 - `NEXT_PUBLIC_MAPBOX_TOKEN`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `WEATHER_API_KEY` (server-only; required for `/api/weather`)
 
 Optional:
 
@@ -44,6 +45,11 @@ Optional server-only placeholders:
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `APP_BASE_URL`
+
+Weather cache note:
+
+- `SUPABASE_SERVICE_ROLE_KEY` is required if you want persistent weather response caching in `weather_cache`.
+- Never expose this key in client bundles (`NEXT_PUBLIC_*`).
 
 ## Map + Geocoding Notes
 
@@ -77,6 +83,10 @@ Optional server-only placeholders:
    - Open report detail from map/feed
    - Filters sheet changes
    - Auth/admin/notifications pages load
+
+## Weather Feature QA
+
+- Full checklist (including edge cases + mobile behavior): `docs/weather-qa-checklist.md`.
 
 ## Local Setup
 

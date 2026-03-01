@@ -14,6 +14,8 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
+import { WeatherPanel } from "@/components/features/weather-panel";
+import { WeatherPill } from "@/components/features/weather-pill";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -67,6 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Bell className="mr-2 h-4 w-4" />
               Notifications
             </Link>
+            <WeatherPill />
             {isAuthenticated && isLoading ? (
               <span className="inline-flex h-9 items-center rounded-xl border border-[var(--border)] px-3 text-xs text-[color:var(--muted)]">
                 <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -108,12 +111,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="ml-auto flex items-center gap-2 md:hidden">
+            <WeatherPill compact className="h-11" />
             <Link
               href="/report/new"
-              className={cn(buttonVariants({ variant: "default", size: "sm" }), "h-11 px-4")}
+              className={cn(buttonVariants({ variant: "default", size: "sm" }), "h-11 w-11 px-0 min-[640px]:w-auto min-[640px]:px-4")}
             >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Report
+              <Plus className="h-4 w-4 min-[640px]:mr-1.5" />
+              <span className="sr-only min-[640px]:not-sr-only">Report</span>
             </Link>
 
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -201,6 +205,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:px-6 lg:px-8">{children}</main>
+      <WeatherPanel />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { LoaderCircle, LocateFixed } from "lucide-react";
 import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { INCIDENT_CATEGORY_META } from "@/lib/incidents/categories";
+import type { WeatherAlert } from "@/lib/weather/types";
 import { INCIDENT_CATEGORIES } from "@/lib/utils/constants";
 
 type ReportMapItem = {
@@ -25,10 +26,14 @@ type IncidentMapProps = {
   selectedReportId: string | null;
   center: { lat: number; lng: number };
   userLocation: { lat: number; lng: number } | null;
+  weatherAlerts?: WeatherAlert[];
+  weatherAlertCenter?: { lat: number; lng: number } | null;
+  showWeatherAlerts?: boolean;
   isActive?: boolean;
   searchTarget?: SearchTarget | null;
   onSelectReport: (id: string) => void;
   onOpenReport?: (id: string) => void;
+  onOpenWeatherAlerts?: () => void;
   onViewportChange: (viewport: {
     center: { lat: number; lng: number };
     bounds: { north: number; south: number; east: number; west: number };
@@ -54,6 +59,12 @@ const DANGER_FILL_LAYER_ID = "danger-radius-fill";
 const DANGER_LINE_LAYER_ID = "danger-radius-line";
 const SEARCH_PIN_SOURCE_ID = "search-pin-source";
 const SEARCH_PIN_LAYER_ID = "search-pin-layer";
+const WEATHER_ALERT_POLYGON_SOURCE_ID = "weather-alert-polygons-source";
+const WEATHER_ALERT_POINTS_SOURCE_ID = "weather-alert-points-source";
+const WEATHER_ALERT_FILL_LAYER_ID = "weather-alert-fill";
+const WEATHER_ALERT_LINE_LAYER_ID = "weather-alert-line";
+const WEATHER_ALERT_POINT_LAYER_ID = "weather-alert-points";
+const WEATHER_ALERT_MIN_ZOOM = 8;
 const VIEWPORT_DEBOUNCE_MS = 320;
 const CAMERA_SYNC_EPSILON = 0.0004;
 
@@ -179,15 +190,83 @@ function buildDangerGeoJson(reports: ReportMapItem[]): GeoJSON.FeatureCollection
   };
 }
 
+function isPolygonGeometry(geometry: GeoJSON.Geometry | null): geometry is GeoJSON.Polygon | GeoJSON.MultiPolygon {
+  if (!geometry) return false;
+  return geometry.type === "Polygon" || geometry.type === "MultiPolygon";
+}
+
+function buildWeatherAlertGeoJson(
+  alerts: WeatherAlert[],
+  fallbackCenter: { lat: number; lng: number } | null
+): {
+  polygons: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon, GeoJSON.GeoJsonProperties>;
+  points: GeoJSON.FeatureCollection<GeoJSON.Point, GeoJSON.GeoJsonProperties>;
+} {
+  const polygonFeatures: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon, GeoJSON.GeoJsonProperties>[] = [];
+  const pointFeatures: GeoJSON.Feature<GeoJSON.Point, GeoJSON.GeoJsonProperties>[] = [];
+
+  for (const [index, alert] of alerts.entries()) {
+    const properties = {
+      id: alert.id,
+      title: alert.title,
+      severity: alert.severity,
+      endsAt: alert.endsAt
+    };
+
+    if (isPolygonGeometry(alert.geometry)) {
+      polygonFeatures.push({
+        type: "Feature",
+        geometry: alert.geometry,
+        properties
+      });
+      continue;
+    }
+
+    if (!fallbackCenter || !isFiniteCoordinate(fallbackCenter.lat) || !isFiniteCoordinate(fallbackCenter.lng)) continue;
+    const fallbackPoint =
+      index === 0
+        ? fallbackCenter
+        : destinationPoint({
+            lat: fallbackCenter.lat,
+            lng: fallbackCenter.lng,
+            bearingDeg: (index * 57) % 360,
+            distanceMeters: 550 + index * 180
+          });
+    pointFeatures.push({
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: [fallbackPoint.lng, fallbackPoint.lat]
+      },
+      properties
+    });
+  }
+
+  return {
+    polygons: {
+      type: "FeatureCollection",
+      features: polygonFeatures
+    },
+    points: {
+      type: "FeatureCollection",
+      features: pointFeatures
+    }
+  };
+}
+
 export default function IncidentMap({
   reports,
   selectedReportId,
   center,
   userLocation,
+  weatherAlerts = [],
+  weatherAlertCenter = null,
+  showWeatherAlerts = false,
   isActive = true,
   searchTarget = null,
   onSelectReport,
   onOpenReport,
+  onOpenWeatherAlerts,
   onViewportChange,
   onUserLocationFound,
   onLocateError
@@ -209,10 +288,22 @@ export default function IncidentMap({
     type: "FeatureCollection",
     features: []
   });
+  const weatherAlertPolygonGeoJsonRef = useRef<
+    GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon, GeoJSON.GeoJsonProperties>
+  >({
+    type: "FeatureCollection",
+    features: []
+  });
+  const weatherAlertPointGeoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, GeoJSON.GeoJsonProperties>>({
+    type: "FeatureCollection",
+    features: []
+  });
   const pendingSearchTargetRef = useRef<SearchTarget | null>(null);
   const lastAppliedSearchTargetIdRef = useRef<string | null>(null);
+  const showWeatherAlertsRef = useRef(showWeatherAlerts);
   const onSelectReportRef = useRef(onSelectReport);
   const onOpenReportRef = useRef(onOpenReport);
+  const onOpenWeatherAlertsRef = useRef(onOpenWeatherAlerts);
   const onViewportChangeRef = useRef(onViewportChange);
   const onUserLocationFoundRef = useRef(onUserLocationFound);
   const onLocateErrorRef = useRef(onLocateError);
@@ -247,6 +338,10 @@ export default function IncidentMap({
   );
 
   const dangerGeoJson = useMemo(() => buildDangerGeoJson(reports), [reports]);
+  const weatherAlertGeoJson = useMemo(
+    () => buildWeatherAlertGeoJson(weatherAlerts, weatherAlertCenter),
+    [weatherAlertCenter, weatherAlerts]
+  );
 
   const warnInvalidPoint = useCallback((reason: string, point: unknown) => {
     if (process.env.NODE_ENV !== "development") return;
@@ -288,6 +383,10 @@ export default function IncidentMap({
   }, [onOpenReport]);
 
   useEffect(() => {
+    onOpenWeatherAlertsRef.current = onOpenWeatherAlerts;
+  }, [onOpenWeatherAlerts]);
+
+  useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
   }, [onViewportChange]);
 
@@ -314,6 +413,34 @@ export default function IncidentMap({
     const source = map.getSource(DANGER_SOURCE_ID) as GeoJSONSource | undefined;
     source?.setData(dangerGeoJson);
   }, [dangerGeoJson]);
+
+  useEffect(() => {
+    weatherAlertPolygonGeoJsonRef.current = weatherAlertGeoJson.polygons;
+    weatherAlertPointGeoJsonRef.current = weatherAlertGeoJson.points;
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const polygonSource = map.getSource(WEATHER_ALERT_POLYGON_SOURCE_ID) as GeoJSONSource | undefined;
+    const pointSource = map.getSource(WEATHER_ALERT_POINTS_SOURCE_ID) as GeoJSONSource | undefined;
+    polygonSource?.setData(weatherAlertGeoJson.polygons);
+    pointSource?.setData(weatherAlertGeoJson.points);
+  }, [weatherAlertGeoJson]);
+
+  useEffect(() => {
+    showWeatherAlertsRef.current = showWeatherAlerts;
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const visibility = showWeatherAlerts && map.getZoom() >= WEATHER_ALERT_MIN_ZOOM ? "visible" : "none";
+    if (map.getLayer(WEATHER_ALERT_FILL_LAYER_ID)) {
+      map.setLayoutProperty(WEATHER_ALERT_FILL_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(WEATHER_ALERT_LINE_LAYER_ID)) {
+      map.setLayoutProperty(WEATHER_ALERT_LINE_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(WEATHER_ALERT_POINT_LAYER_ID)) {
+      map.setLayoutProperty(WEATHER_ALERT_POINT_LAYER_ID, "visibility", visibility);
+    }
+  }, [showWeatherAlerts]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current || !token) return;
@@ -351,6 +478,19 @@ export default function IncidentMap({
       moveEndDebounceRef.current = window.setTimeout(() => {
         emitViewport();
       }, VIEWPORT_DEBOUNCE_MS);
+    };
+
+    const syncWeatherLayerVisibility = () => {
+      const visibility = showWeatherAlertsRef.current && map.getZoom() >= WEATHER_ALERT_MIN_ZOOM ? "visible" : "none";
+      if (map.getLayer(WEATHER_ALERT_FILL_LAYER_ID)) {
+        map.setLayoutProperty(WEATHER_ALERT_FILL_LAYER_ID, "visibility", visibility);
+      }
+      if (map.getLayer(WEATHER_ALERT_LINE_LAYER_ID)) {
+        map.setLayoutProperty(WEATHER_ALERT_LINE_LAYER_ID, "visibility", visibility);
+      }
+      if (map.getLayer(WEATHER_ALERT_POINT_LAYER_ID)) {
+        map.setLayoutProperty(WEATHER_ALERT_POINT_LAYER_ID, "visibility", visibility);
+      }
     };
 
     const handleMapLoad = () => {
@@ -473,6 +613,60 @@ export default function IncidentMap({
         }
       });
 
+      map.addSource(WEATHER_ALERT_POLYGON_SOURCE_ID, {
+        type: "geojson",
+        data: weatherAlertPolygonGeoJsonRef.current
+      });
+
+      map.addSource(WEATHER_ALERT_POINTS_SOURCE_ID, {
+        type: "geojson",
+        data: weatherAlertPointGeoJsonRef.current
+      });
+
+      map.addLayer({
+        id: WEATHER_ALERT_FILL_LAYER_ID,
+        type: "fill",
+        source: WEATHER_ALERT_POLYGON_SOURCE_ID,
+        minzoom: WEATHER_ALERT_MIN_ZOOM,
+        layout: {
+          visibility: "none"
+        },
+        paint: {
+          "fill-color": "rgba(251, 146, 60, 0.26)",
+          "fill-opacity": 0.2
+        }
+      });
+
+      map.addLayer({
+        id: WEATHER_ALERT_LINE_LAYER_ID,
+        type: "line",
+        source: WEATHER_ALERT_POLYGON_SOURCE_ID,
+        minzoom: WEATHER_ALERT_MIN_ZOOM,
+        layout: {
+          visibility: "none"
+        },
+        paint: {
+          "line-color": "rgba(251, 146, 60, 0.9)",
+          "line-width": 1.3
+        }
+      });
+
+      map.addLayer({
+        id: WEATHER_ALERT_POINT_LAYER_ID,
+        type: "circle",
+        source: WEATHER_ALERT_POINTS_SOURCE_ID,
+        minzoom: WEATHER_ALERT_MIN_ZOOM,
+        layout: {
+          visibility: "none"
+        },
+        paint: {
+          "circle-color": "rgba(251,146,60,0.86)",
+          "circle-radius": 7,
+          "circle-stroke-width": 1.6,
+          "circle-stroke-color": "rgba(255,237,213,0.95)"
+        }
+      });
+
       map.on("mouseenter", LAYER_CLUSTERS, () => {
         map.getCanvas().style.cursor = "pointer";
       });
@@ -483,6 +677,18 @@ export default function IncidentMap({
         map.getCanvas().style.cursor = "pointer";
       });
       map.on("mouseleave", LAYER_POINTS_SYMBOL, () => {
+        map.getCanvas().style.cursor = "";
+      });
+      map.on("mouseenter", WEATHER_ALERT_FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", WEATHER_ALERT_FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "";
+      });
+      map.on("mouseenter", WEATHER_ALERT_POINT_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", WEATHER_ALERT_POINT_LAYER_ID, () => {
         map.getCanvas().style.cursor = "";
       });
 
@@ -523,6 +729,62 @@ export default function IncidentMap({
         popupRef.current = new mapboxgl.Popup({ closeButton: false, offset: 12 }).setLngLat(coords).setDOMContent(popupNode).addTo(map);
       });
 
+      const openWeatherAlertPopup = (event: mapboxgl.MapLayerMouseEvent) => {
+        const feature = event.features?.[0];
+        if (!feature) return;
+        const title = String(feature.properties?.title ?? "Weather alert");
+        const severity = String(feature.properties?.severity ?? "info");
+        const endsAtRaw = String(feature.properties?.endsAt ?? "");
+        const endsAtText = endsAtRaw ? new Date(endsAtRaw).toLocaleString() : "Unknown";
+
+        const coordinates =
+          feature.geometry.type === "Point" ? getFeatureCoordinates(feature) : ([event.lngLat.lng, event.lngLat.lat] as [number, number]);
+        if (!coordinates) return;
+
+        const popupNode = document.createElement("div");
+        popupNode.style.padding = "10px 12px";
+        popupNode.style.minWidth = "220px";
+        popupNode.style.display = "grid";
+        popupNode.style.gap = "6px";
+
+        const titleNode = document.createElement("strong");
+        titleNode.textContent = title;
+        popupNode.append(titleNode);
+
+        const metaNode = document.createElement("p");
+        metaNode.style.margin = "0";
+        metaNode.style.fontSize = "12px";
+        metaNode.style.opacity = "0.82";
+        metaNode.textContent = `${severity} • Ends ${endsAtText}`;
+        popupNode.append(metaNode);
+
+        const actionButton = document.createElement("button");
+        actionButton.type = "button";
+        actionButton.textContent = "View details";
+        actionButton.style.border = "1px solid rgba(34,211,238,0.4)";
+        actionButton.style.borderRadius = "8px";
+        actionButton.style.padding = "6px 10px";
+        actionButton.style.background = "rgba(8,12,20,0.78)";
+        actionButton.style.color = "var(--fg)";
+        actionButton.style.fontSize = "12px";
+        actionButton.style.cursor = "pointer";
+        actionButton.onclick = () => {
+          popupRef.current?.remove();
+          onOpenWeatherAlertsRef.current?.();
+        };
+        popupNode.append(actionButton);
+
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({ closeButton: false, offset: 12 })
+          .setLngLat(coordinates)
+          .setDOMContent(popupNode)
+          .addTo(map);
+      };
+
+      map.on("click", WEATHER_ALERT_FILL_LAYER_ID, openWeatherAlertPopup);
+      map.on("click", WEATHER_ALERT_POINT_LAYER_ID, openWeatherAlertPopup);
+      syncWeatherLayerVisibility();
+
       isMapLoadedRef.current = true;
       if (pendingSearchTargetRef.current) {
         const pendingTarget = pendingSearchTargetRef.current;
@@ -548,6 +810,7 @@ export default function IncidentMap({
 
     map.on("load", handleMapLoad);
     map.on("moveend", scheduleViewportSync);
+    map.on("zoomend", syncWeatherLayerVisibility);
 
     return () => {
       if (moveEndDebounceRef.current) window.clearTimeout(moveEndDebounceRef.current);

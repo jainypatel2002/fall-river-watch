@@ -28,6 +28,11 @@ type UiState = {
   mapBounds: MapBounds | null;
   userLocation: { lat: number; lng: number } | null;
   geolocationDenied: boolean;
+  weatherPanelOpen: boolean;
+  weatherPanelSection: "overview" | "alerts";
+  weatherLocationMode: "auto" | "userLocation" | "mapCenter";
+  showWeatherAlertsLayer: boolean;
+  showWeatherOverlay: boolean;
   toastQueue: UiToast[];
   setActiveTab: (tab: "map" | "feed") => void;
   setSelectedReportId: (id: string | null) => void;
@@ -42,6 +47,12 @@ type UiState = {
   setMapViewport: (viewport: { center: { lat: number; lng: number }; bounds: MapBounds }) => void;
   setUserLocation: (coords: { lat: number; lng: number } | null) => void;
   setGeolocationDenied: (value: boolean) => void;
+  setWeatherPanelOpen: (open: boolean) => void;
+  openWeatherPanel: (section?: "overview" | "alerts") => void;
+  setWeatherPanelSection: (section: "overview" | "alerts") => void;
+  setWeatherLocationMode: (mode: "auto" | "userLocation" | "mapCenter") => void;
+  setShowWeatherAlertsLayer: (value: boolean) => void;
+  setShowWeatherOverlay: (value: boolean) => void;
   enqueueToast: (payload: Omit<UiToast, "id"> & { id?: string }) => void;
   dequeueToast: () => UiToast | null;
   resetFilters: () => void;
@@ -61,6 +72,11 @@ export const useUiStore = create<UiState>((set, get) => ({
   mapBounds: null,
   userLocation: null,
   geolocationDenied: false,
+  weatherPanelOpen: false,
+  weatherPanelSection: "overview",
+  weatherLocationMode: "auto",
+  showWeatherAlertsLayer: false,
+  showWeatherOverlay: false,
   toastQueue: [],
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSelectedReportId: (id) => set({ selectedReportId: id }),
@@ -82,6 +98,12 @@ export const useUiStore = create<UiState>((set, get) => ({
   setMapViewport: ({ center, bounds }) => set({ mapCenter: center, mapBounds: bounds }),
   setUserLocation: (userLocation) => set({ userLocation }),
   setGeolocationDenied: (geolocationDenied) => set({ geolocationDenied }),
+  setWeatherPanelOpen: (weatherPanelOpen) => set({ weatherPanelOpen }),
+  openWeatherPanel: (section = "overview") => set({ weatherPanelOpen: true, weatherPanelSection: section }),
+  setWeatherPanelSection: (weatherPanelSection) => set({ weatherPanelSection }),
+  setWeatherLocationMode: (weatherLocationMode) => set({ weatherLocationMode }),
+  setShowWeatherAlertsLayer: (showWeatherAlertsLayer) => set({ showWeatherAlertsLayer }),
+  setShowWeatherOverlay: (showWeatherOverlay) => set({ showWeatherOverlay }),
   enqueueToast: (payload) =>
     set((state) => ({
       toastQueue: [...state.toastQueue, { ...payload, id: payload.id ?? crypto.randomUUID() }]

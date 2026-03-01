@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, CloudRain, Layers3, PawPrint, ShieldAlert, TriangleAlert, Zap } from "lucide-react";
+import { Ban, CloudRain, Layers3, LoaderCircle, PawPrint, ShieldAlert, TriangleAlert, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { INCIDENT_CATEGORY_META } from "@/lib/incidents/categories";
 import { useUiStore } from "@/lib/store/ui-store";
@@ -18,11 +19,22 @@ const iconMap = {
   "shield-alert": ShieldAlert
 } as const;
 
-export function CategoryLayerControl() {
+export function CategoryLayerControl({
+  weatherAlertsCount = 0,
+  weatherLoading = false,
+  onOpenWeatherPanel
+}: {
+  weatherAlertsCount?: number;
+  weatherLoading?: boolean;
+  onOpenWeatherPanel?: () => void;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const categories = useUiStore((state) => state.categories);
   const setCategories = useUiStore((state) => state.setCategories);
   const toggleCategory = useUiStore((state) => state.toggleCategory);
+  const showWeatherAlertsLayer = useUiStore((state) => state.showWeatherAlertsLayer);
+  const setShowWeatherAlertsLayer = useUiStore((state) => state.setShowWeatherAlertsLayer);
+  const showWeatherOverlay = useUiStore((state) => state.showWeatherOverlay);
 
   const allSelected = categories.length === INCIDENT_CATEGORIES.length;
 
@@ -84,6 +96,39 @@ export function CategoryLayerControl() {
                 );
               })}
             </div>
+
+            <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.78)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Weather Alerts</p>
+                  <p className="text-xs text-[color:var(--muted)]">Show weather alerts on map.</p>
+                </div>
+                <Switch checked={showWeatherAlertsLayer} onCheckedChange={setShowWeatherAlertsLayer} />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Weather Overlay</p>
+                  <p className="text-xs text-[color:var(--muted)]">Precipitation layer (phase 2).</p>
+                </div>
+                <Switch checked={showWeatherOverlay} onCheckedChange={() => {}} disabled />
+              </div>
+
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-3 text-sm",
+                  "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[var(--fg)]"
+                )}
+                onClick={() => {
+                  onOpenWeatherPanel?.();
+                  setMobileOpen(false);
+                }}
+              >
+                {weatherLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CloudRain className="h-4 w-4" />}
+                Weather details {weatherAlertsCount > 0 ? `(${weatherAlertsCount})` : ""}
+              </button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -128,6 +173,25 @@ export function CategoryLayerControl() {
               </button>
             );
           })}
+        </div>
+
+        <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[rgba(9,14,27,0.72)] p-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] text-[color:var(--muted)]">Weather alerts</p>
+            <Switch checked={showWeatherAlertsLayer} onCheckedChange={setShowWeatherAlertsLayer} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] text-[color:var(--muted)]">Weather overlay</p>
+            <Switch checked={showWeatherOverlay} onCheckedChange={() => {}} disabled />
+          </div>
+          <button
+            type="button"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--border)] bg-[rgba(10,15,28,0.72)] px-2 py-1.5 text-[11px] text-[var(--fg)]"
+            onClick={onOpenWeatherPanel}
+          >
+            {weatherLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <CloudRain className="h-3.5 w-3.5" />}
+            Weather {weatherAlertsCount > 0 ? `(${weatherAlertsCount})` : ""}
+          </button>
         </div>
       </div>
     </>
