@@ -18,6 +18,11 @@ type LocationSearchProps = {
   placeholder?: string;
   className?: string;
   onClearSearch?: () => void;
+  title?: string;
+  showTitle?: boolean;
+  showHint?: boolean;
+  dropdownMode?: "floating" | "inline";
+  onInputFocus?: () => void;
 };
 
 const GEOCODE_STALE_MS = 60_000;
@@ -65,7 +70,12 @@ export function LocationSearch({
   getProximity,
   placeholder = "Type address or place",
   className,
-  onClearSearch
+  onClearSearch,
+  title = "Search Address",
+  showTitle = true,
+  showHint = true,
+  dropdownMode = "floating",
+  onInputFocus
 }: LocationSearchProps) {
   const uiToast = useUiToast();
   const queryClient = useQueryClient();
@@ -219,15 +229,20 @@ export function LocationSearch({
     }
   };
 
+  const dropdownClasses =
+    dropdownMode === "inline"
+      ? "mt-2 overflow-hidden rounded-xl border border-[rgba(124,146,184,0.45)] bg-[rgba(7,11,20,0.98)] shadow-[0_20px_34px_rgba(0,0,0,0.45)]"
+      : "absolute left-3 right-3 top-[calc(100%-2px)] z-[90] mt-2 overflow-hidden rounded-xl border border-[rgba(124,146,184,0.45)] bg-[rgba(7,11,20,0.98)] shadow-[0_20px_34px_rgba(0,0,0,0.45)]";
+
   return (
     <div className={cn("relative z-[80] rounded-2xl border border-[var(--border)] bg-[rgba(9,14,27,0.72)] p-3", className)}>
-      <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--muted)]">Search Address</p>
+      {showTitle ? <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--muted)]">{title}</p> : null}
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--muted)]" />
         <Input
           value={value}
           placeholder={placeholder}
-          className="pl-9 pr-16"
+          className="h-11 pl-9 pr-16"
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={shouldShowDropdown}
@@ -239,6 +254,7 @@ export function LocationSearch({
             setActiveIndex(-1);
           }}
           onFocus={() => {
+            onInputFocus?.();
             if (trimmedValue.length >= 2) setIsOpen(true);
           }}
           onKeyDown={onKeyDown}
@@ -254,7 +270,7 @@ export function LocationSearch({
           type="button"
           size="sm"
           variant="ghost"
-          className="absolute right-1 top-1/2 h-8 -translate-y-1/2 px-2 text-xs"
+          className="absolute right-1 top-1/2 min-h-11 -translate-y-1/2 px-2 text-xs"
           onMouseDown={(event) => event.preventDefault()}
           onClick={clearSearchSelection}
         >
@@ -263,7 +279,7 @@ export function LocationSearch({
       </div>
 
       {shouldShowDropdown ? (
-        <div className="absolute left-3 right-3 top-[calc(100%-2px)] z-[90] mt-2 overflow-hidden rounded-xl border border-[rgba(124,146,184,0.45)] bg-[rgba(7,11,20,0.98)] shadow-[0_20px_34px_rgba(0,0,0,0.45)]">
+        <div className={dropdownClasses}>
           {isBusy ? (
             <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-[color:var(--muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -285,7 +301,7 @@ export function LocationSearch({
                     role="option"
                     aria-selected={index === activeIndex}
                     className={cn(
-                      "flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-[var(--fg)] transition-colors",
+                      "flex min-h-11 w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-[var(--fg)] transition-colors",
                       index === activeIndex ? "bg-[rgba(34,211,238,0.14)]" : "hover:bg-[rgba(118,144,189,0.12)]"
                     )}
                     onMouseDown={(event) => {
@@ -304,7 +320,7 @@ export function LocationSearch({
         </div>
       ) : null}
 
-      <p className="mt-2 text-xs text-[color:var(--muted)]">Suggestions are biased near your current map center.</p>
+      {showHint ? <p className="mt-2 text-xs text-[color:var(--muted)]">Suggestions are biased near your current map center.</p> : null}
     </div>
   );
 }

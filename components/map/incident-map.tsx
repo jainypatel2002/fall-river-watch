@@ -7,6 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { INCIDENT_CATEGORY_META } from "@/lib/incidents/categories";
 import type { WeatherAlert } from "@/lib/weather/types";
 import { INCIDENT_CATEGORIES } from "@/lib/utils/constants";
+import { cn } from "@/lib/utils";
 
 type ReportMapItem = {
   id: string;
@@ -40,6 +41,7 @@ type IncidentMapProps = {
   }) => void;
   onUserLocationFound?: (coords: { lat: number; lng: number }) => void;
   onLocateError?: (message: string) => void;
+  mobileControlsOffsetClassName?: string;
 };
 
 type SearchTarget = {
@@ -269,7 +271,8 @@ export default function IncidentMap({
   onOpenWeatherAlerts,
   onViewportChange,
   onUserLocationFound,
-  onLocateError
+  onLocateError,
+  mobileControlsOffsetClassName
 }: IncidentMapProps) {
   const centerLat = center.lat;
   const centerLng = center.lng;
@@ -456,7 +459,10 @@ export default function IncidentMap({
     });
 
     mapRef.current = map;
-    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+    const showNavigationControl = typeof window === "undefined" ? true : window.matchMedia("(min-width: 641px)").matches;
+    if (showNavigationControl) {
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+    }
 
     const emitViewport = () => {
       const nextCenter = map.getCenter();
@@ -947,11 +953,14 @@ export default function IncidentMap({
   }
 
   return (
-    <div className="relative h-[58vh] min-h-[20rem] w-full overflow-hidden rounded-2xl border border-[var(--border)] sm:h-[62vh] sm:min-h-[22rem]">
+    <div className="relative h-[calc(100dvh-9.75rem)] min-h-[24rem] w-full overflow-hidden rounded-2xl border border-[var(--border)] sm:h-[62vh] sm:min-h-[22rem]">
       <div ref={mapContainerRef} className="h-full w-full" />
       <button
         type="button"
-        className="pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] right-3 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-[rgba(6,9,15,0.92)] text-[var(--fg)] shadow-md sm:bottom-3"
+        className={cn(
+          "pointer-events-auto absolute right-3 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-[rgba(6,9,15,0.92)] text-[var(--fg)] shadow-md sm:bottom-3",
+          mobileControlsOffsetClassName ?? "bottom-[calc(env(safe-area-inset-bottom)+5.75rem)]"
+        )}
         onClick={recenterToMyLocation}
         aria-label="Recenter map to my location"
       >

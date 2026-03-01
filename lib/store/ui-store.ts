@@ -20,6 +20,9 @@ type UiState = {
   activeTab: "map" | "feed";
   selectedReportId: string | null;
   filterDrawerOpen: boolean;
+  mobileMapOverlayMode: "none" | "sheet";
+  mobileMapSheetTab: "search" | "filters";
+  mobileMapSheetSnap: "collapsed" | "half" | "full";
   categories: IncidentCategory[];
   timeWindow: (typeof TIME_WINDOWS)[number];
   radiusMiles: (typeof RADIUS_OPTIONS)[number];
@@ -37,6 +40,9 @@ type UiState = {
   setActiveTab: (tab: "map" | "feed") => void;
   setSelectedReportId: (id: string | null) => void;
   setFilterDrawerOpen: (open: boolean) => void;
+  setMobileMapOverlayMode: (mode: "none" | "sheet") => void;
+  setMobileMapSheetTab: (tab: "search" | "filters") => void;
+  setMobileMapSheetSnap: (snap: "collapsed" | "half" | "full") => void;
   setCategories: (categories: IncidentCategory[]) => void;
   toggleCategory: (category: IncidentCategory) => void;
   setTimeWindow: (value: (typeof TIME_WINDOWS)[number]) => void;
@@ -64,6 +70,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   activeTab: "map",
   selectedReportId: null,
   filterDrawerOpen: false,
+  mobileMapOverlayMode: "sheet",
+  mobileMapSheetTab: "search",
+  mobileMapSheetSnap: "collapsed",
   categories: [...INCIDENT_CATEGORIES],
   timeWindow: "24h",
   radiusMiles: 3,
@@ -81,6 +90,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSelectedReportId: (id) => set({ selectedReportId: id }),
   setFilterDrawerOpen: (open) => set({ filterDrawerOpen: open }),
+  setMobileMapOverlayMode: (mobileMapOverlayMode) => set({ mobileMapOverlayMode }),
+  setMobileMapSheetTab: (mobileMapSheetTab) => set({ mobileMapSheetTab }),
+  setMobileMapSheetSnap: (mobileMapSheetSnap) => set({ mobileMapSheetSnap }),
   setCategories: (categories) => set({ categories: categories.length ? categories : [...INCIDENT_CATEGORIES] }),
   toggleCategory: (category) =>
     set((state) => {

@@ -7,12 +7,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, CheckCircle2, CircleAlert, LoaderCircle, ShieldAlert } from "lucide-react";
 import { CategoryLayerControl } from "@/components/map/category-layer-control";
 import { LocationSearch } from "@/components/map/LocationSearch";
+import { MobileMapControlsSheet } from "@/components/features/mobile-map-controls-sheet";
 import { ReportFab } from "@/components/features/report-fab";
 import { ReportFeed } from "@/components/features/report-feed";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
 import { useWeatherTarget } from "@/hooks/use-weather-target";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
@@ -54,6 +56,7 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 export function HomeShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isMobile = useMediaQuery("(max-width: 640px)");
   const supabase = useSupabaseBrowser();
   const uiToast = useUiToast();
   useReportsRealtime(true);
@@ -76,7 +79,9 @@ export function HomeShell() {
     openWeatherPanel,
     setUserLocation,
     geolocationDenied,
-    setGeolocationDenied
+    setGeolocationDenied,
+    mobileMapOverlayMode,
+    mobileMapSheetSnap
   } = useUiStore();
   const selectedSearchLocation = useMapSearchStore((state) => state.selectedLocation);
   const searchQuery = useMapSearchStore((state) => state.searchQuery);
@@ -174,6 +179,19 @@ export function HomeShell() {
     [setMapCenter, setSelectedLocation, setSelectedReportId]
   );
 
+  const mobileMapControlOffsetClass = useMemo(() => {
+    if (!isMobile || activeTab !== "map" || mobileMapOverlayMode !== "sheet") {
+      return "bottom-[calc(env(safe-area-inset-bottom)+5.75rem)]";
+    }
+    if (mobileMapSheetSnap === "collapsed") {
+      return "bottom-[calc(env(safe-area-inset-bottom)+10.2rem)]";
+    }
+    if (mobileMapSheetSnap === "half") {
+      return "bottom-[calc(env(safe-area-inset-bottom)+18.4rem)]";
+    }
+    return "bottom-[calc(env(safe-area-inset-bottom)+22.8rem)]";
+  }, [activeTab, isMobile, mobileMapOverlayMode, mobileMapSheetSnap]);
+
   return (
     <section className="mx-auto w-full max-w-6xl space-y-5 pb-24">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -249,8 +267,19 @@ export function HomeShell() {
                 setGeolocationDenied(true);
                 uiToast.info("Location unavailable", message);
               }}
+              mobileControlsOffsetClassName={mobileMapControlOffsetClass}
             />
             <CategoryLayerControl
+              weatherAlertsCount={weatherQuery.data?.alerts.length ?? 0}
+              weatherLoading={weatherQuery.isFetching && !weatherQuery.data}
+              onOpenWeatherPanel={() => openWeatherPanel("overview")}
+            />
+            <MobileMapControlsSheet
+              searchValue={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSelectLocation={onSelectLocation}
+              onClearSearch={clearSelectedLocation}
+              getProximity={() => mapCenter}
               weatherAlertsCount={weatherQuery.data?.alerts.length ?? 0}
               weatherLoading={weatherQuery.isFetching && !weatherQuery.data}
               onOpenWeatherPanel={() => openWeatherPanel("overview")}
@@ -259,13 +288,15 @@ export function HomeShell() {
 
           {incidentsQuery.isFetching ? <p className="text-xs text-[color:var(--muted)]">Refreshing map incidents...</p> : null}
 
-          <LocationSearch
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSelectLocation={onSelectLocation}
-            onClearSearch={clearSelectedLocation}
-            getProximity={() => mapCenter}
-          />
+          {!isMobile ? (
+            <LocationSearch
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onSelectLocation={onSelectLocation}
+              onClearSearch={clearSelectedLocation}
+              getProximity={() => mapCenter}
+            />
+          ) : null}
 
           {selectedReport ? (
             <Card>

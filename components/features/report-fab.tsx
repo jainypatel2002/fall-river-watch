@@ -8,16 +8,35 @@ import { useUiStore } from "@/lib/store/ui-store";
 import { cn } from "@/lib/utils";
 
 export function ReportFab() {
-  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isMobile = useMediaQuery("(max-width: 640px)");
+  const activeTab = useUiStore((state) => state.activeTab);
+  const mobileMapOverlayMode = useUiStore((state) => state.mobileMapOverlayMode);
+  const mobileMapSheetSnap = useUiStore((state) => state.mobileMapSheetSnap);
   const weatherPanelOpen = useUiStore((state) => state.weatherPanelOpen);
-  const mobileRaised = isMobile && weatherPanelOpen;
+  let mobileBottomClass = "bottom-[calc(env(safe-area-inset-bottom)+1rem)]";
+
+  if (isMobile && activeTab === "map" && mobileMapOverlayMode === "sheet") {
+    if (mobileMapSheetSnap === "collapsed") {
+      mobileBottomClass = "bottom-[calc(env(safe-area-inset-bottom)+8.75rem)]";
+    }
+    if (mobileMapSheetSnap === "half") {
+      mobileBottomClass = "bottom-[calc(env(safe-area-inset-bottom)+17.5rem)]";
+    }
+    if (mobileMapSheetSnap === "full") {
+      mobileBottomClass = "bottom-[calc(env(safe-area-inset-bottom)+22rem)]";
+    }
+  }
+
+  if (isMobile && weatherPanelOpen) {
+    mobileBottomClass = "bottom-[calc(env(safe-area-inset-bottom)+18rem)]";
+  }
 
   return (
     <Link
       href="/report/new"
       className={cn(
-        "fixed right-4 z-30 bottom-[calc(env(safe-area-inset-bottom)+1rem)] sm:bottom-5 sm:right-5",
-        mobileRaised && "bottom-[calc(env(safe-area-inset-bottom)+18rem)]"
+        "fixed right-4 z-30 sm:bottom-5 sm:right-5",
+        isMobile ? mobileBottomClass : "bottom-[calc(env(safe-area-inset-bottom)+1rem)]"
       )}
     >
       <Button

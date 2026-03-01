@@ -34,8 +34,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[rgba(6,9,15,0.82)] backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-7xl min-w-0 items-center gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8">
+      <header
+        className="sticky top-0 z-40 border-b border-[var(--border)] bg-[rgba(6,9,15,0.82)] backdrop-blur-md"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <div className="mx-auto flex h-14 w-full max-w-7xl min-w-0 items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-6 lg:px-8">
           <Link href="/" className="inline-flex min-w-0 shrink items-center gap-2 overflow-hidden">
             <span
               className="shrink-0 rounded-xl border border-[rgba(34,211,238,0.45)] bg-[rgba(10,20,36,0.85)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
@@ -204,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:px-6 lg:px-8">{children}</main>
+      <main className="mx-auto w-full max-w-7xl px-4 py-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:px-6 sm:py-6 lg:px-8">{children}</main>
       <WeatherPanel />
     </div>
   );
