@@ -170,7 +170,7 @@ export function NotificationSettingsForm() {
           )}
           {pushRetryAvailable ? (
             <div className="mt-2">
-              <Button type="button" variant="outline" size="sm" disabled={isRetryingPush} onClick={() => void attemptPushRegistration()}>
+              <Button type="button" variant="outline" size="sm" className="min-h-11 w-full sm:w-auto" disabled={isRetryingPush} onClick={() => void attemptPushRegistration()}>
                 {isRetryingPush ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : null}
                 Try again
               </Button>
@@ -179,7 +179,7 @@ export function NotificationSettingsForm() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.72)] p-3">
+        <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.72)] p-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <Label>Enable notifications</Label>
             <p className="text-xs text-[color:var(--muted)]">Turn all incident alerts on/off.</p>
@@ -192,7 +192,7 @@ export function NotificationSettingsForm() {
 
         <div className="space-y-2">
           <Label>Channels</Label>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
               { id: "email", label: "Email" },
               { id: "web_push", label: "Web Push" }
@@ -211,7 +211,7 @@ export function NotificationSettingsForm() {
                       return { ...current, channels: [...current.channels, channel.id as "email" | "web_push"] };
                     });
                   }}
-                  className={`rounded-xl border px-3 py-1.5 text-sm ${active
+                  className={`min-h-11 w-full rounded-xl border px-3 py-1.5 text-sm ${active
                     ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.15)] text-[var(--fg)]"
                     : "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[color:var(--muted)]"
                     }`}
@@ -231,6 +231,7 @@ export function NotificationSettingsForm() {
             min={0.5}
             max={25}
             step={0.5}
+            className="h-11"
             value={settings.radius_miles}
             onChange={(event) => updateDraft((current) => ({ ...current, radius_miles: Number(event.target.value) }))}
           />
@@ -254,7 +255,7 @@ export function NotificationSettingsForm() {
                       return { ...current, categories: [...current.categories, category] };
                     })
                   }
-                  className={`rounded-full border px-3 py-1 text-xs ${selected
+                  className={`min-h-11 rounded-full border px-3 py-1 text-xs ${selected
                     ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.15)] text-[var(--fg)]"
                     : "border-[var(--border)] bg-[rgba(10,15,28,0.72)] text-[color:var(--muted)]"
                     }`}
@@ -266,12 +267,13 @@ export function NotificationSettingsForm() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="quiet-start">Quiet hours start</Label>
             <Input
               id="quiet-start"
               type="time"
+              className="h-11"
               value={settings.quiet_hours.start}
               onChange={(event) =>
                 updateDraft((current) => ({ ...current, quiet_hours: { ...current.quiet_hours, start: event.target.value } }))
@@ -283,6 +285,7 @@ export function NotificationSettingsForm() {
             <Input
               id="quiet-end"
               type="time"
+              className="h-11"
               value={settings.quiet_hours.end}
               onChange={(event) =>
                 updateDraft((current) => ({ ...current, quiet_hours: { ...current.quiet_hours, end: event.target.value } }))
@@ -291,7 +294,7 @@ export function NotificationSettingsForm() {
           </div>
         </div>
 
-        <Button onClick={save} disabled={mutation.isPending || isRetryingPush}>
+        <Button onClick={save} className="min-h-11 w-full sm:w-auto" disabled={mutation.isPending || isRetryingPush}>
           Save Preferences
         </Button>
       </CardContent>

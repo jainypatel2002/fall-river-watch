@@ -13,11 +13,11 @@ export default async function NewReportPage() {
 
   return (
     <section className="mx-auto w-full max-w-4xl space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl" style={{ fontFamily: "var(--font-heading)" }}>
           New Incident
         </h1>
-        <Link href="/" className="text-sm text-[color:var(--muted)] underline underline-offset-4">
+        <Link href="/" className="inline-flex min-h-11 items-center text-sm text-[color:var(--muted)] underline underline-offset-4">
           Back to map
         </Link>
       </div>

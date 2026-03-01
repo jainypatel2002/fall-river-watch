@@ -302,7 +302,7 @@ export function NewReportForm() {
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="pb-[max(env(safe-area-inset-bottom),1.25rem)]">
         <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
           {step === 1 ? (
             <div className="space-y-5">
@@ -387,9 +387,9 @@ export function NewReportForm() {
 
           {step === 2 ? (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                 <Label>Location</Label>
-                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={handleUseMyLocation} disabled={isLocating}>
+                <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1.5" onClick={handleUseMyLocation} disabled={isLocating}>
                   {isLocating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
                   Use my location
                 </Button>
@@ -518,7 +518,7 @@ export function NewReportForm() {
           ) : null}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <Button type="button" variant="ghost" className="gap-1.5" onClick={() => setStep((prev) => Math.max(1, prev - 1) as 1 | 2 | 3)} disabled={step === 1}>
+            <Button type="button" variant="ghost" className="min-h-11 w-full gap-1.5 sm:w-auto" onClick={() => setStep((prev) => Math.max(1, prev - 1) as 1 | 2 | 3)} disabled={step === 1}>
               <ChevronLeft className="h-4 w-4" />
               Back
             </Button>
@@ -527,7 +527,7 @@ export function NewReportForm() {
               <Button
                 key="continue-step"
                 type="button"
-                className="gap-1.5"
+                className="min-h-11 w-full gap-1.5 sm:w-auto"
                 onClick={(event) => {
                   event.preventDefault();
                   void goToNextStep();
@@ -546,7 +546,7 @@ export function NewReportForm() {
                   void finalSubmitReport();
                 }}
                 disabled={createMutation.isPending || isSubmitting}
-                className="gap-2"
+                className="min-h-11 w-full gap-2 sm:w-auto"
               >
                 {createMutation.isPending || isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                 Submit Report

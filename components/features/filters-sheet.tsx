@@ -26,7 +26,7 @@ function ChoicePill({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-xl border px-3 py-1.5 text-xs font-medium transition-[border-color,background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]",
+        "min-h-11 rounded-xl border px-3 py-1.5 text-xs font-medium transition-[border-color,background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]",
         active
           ? "border-[rgba(34,211,238,0.6)] bg-[rgba(34,211,238,0.16)] text-[var(--fg)]"
           : "border-[var(--border)] bg-[rgba(9,14,27,0.65)] text-[color:var(--muted)] hover:border-[rgba(34,211,238,0.38)] hover:text-[var(--fg)]"
@@ -56,12 +56,12 @@ export function FiltersSheet() {
   return (
     <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="min-h-11 gap-2">
           <Filter className="h-4 w-4" />
           Filters
         </Button>
       </SheetTrigger>
-      <SheetContent side={isMobile ? "bottom" : "right"} className={cn("overflow-y-auto", isMobile ? "px-4 pb-7 pt-8" : "w-[24rem]")}>
+      <SheetContent side={isMobile ? "bottom" : "right"} className={cn("overflow-y-auto", isMobile ? "px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-8" : "w-[24rem]")}>
         <SheetHeader>
           <SheetTitle>Filters</SheetTitle>
           <SheetDescription>Control map + feed scope by category, time window, and radius.</SheetDescription>

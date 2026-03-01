@@ -677,18 +677,18 @@ export default function IncidentMap({
 
   if (!token) {
     return (
-      <div className="grid h-[62vh] min-h-[22rem] place-items-center rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)]">
+      <div className="grid h-[58vh] min-h-[20rem] place-items-center rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)] sm:h-[62vh] sm:min-h-[22rem]">
         Missing `NEXT_PUBLIC_MAPBOX_TOKEN`.
       </div>
     );
   }
 
   return (
-    <div className="relative h-[62vh] min-h-[22rem] w-full overflow-hidden rounded-2xl border border-[var(--border)]">
+    <div className="relative h-[58vh] min-h-[20rem] w-full overflow-hidden rounded-2xl border border-[var(--border)] sm:h-[62vh] sm:min-h-[22rem]">
       <div ref={mapContainerRef} className="h-full w-full" />
       <button
         type="button"
-        className="pointer-events-auto absolute bottom-3 right-3 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-[rgba(6,9,15,0.92)] text-[var(--fg)] shadow-md"
+        className="pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] right-3 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border)] bg-[rgba(6,9,15,0.92)] text-[var(--fg)] shadow-md sm:bottom-3"
         onClick={recenterToMyLocation}
         aria-label="Recenter map to my location"
       >

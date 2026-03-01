@@ -24,12 +24,12 @@ import { formatRelativeTime, prettyCategory } from "@/lib/utils/format";
 
 const IncidentMap = dynamic(() => import("@/components/map/incident-map"), {
   ssr: false,
-  loading: () => <div className="shimmer h-[62vh] rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />
+  loading: () => <div className="shimmer h-[58vh] min-h-[20rem] rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)] sm:h-[62vh] sm:min-h-[22rem]" />
 });
 
 const FiltersSheet = dynamic(() => import("@/components/features/filters-sheet").then((module) => module.FiltersSheet), {
   ssr: false,
-  loading: () => <div className="h-9 w-24 rounded-xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />
+  loading: () => <div className="h-11 w-24 rounded-xl border border-[var(--border)] bg-[rgba(11,16,29,0.72)]" />
 });
 
 function toRadians(value: number) {
@@ -165,7 +165,7 @@ export function HomeShell() {
   );
 
   return (
-    <section className="mx-auto w-full max-w-6xl space-y-5">
+    <section className="mx-auto w-full max-w-6xl space-y-5 pb-24">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl" style={{ fontFamily: "var(--font-heading)" }}>
@@ -195,9 +195,13 @@ export function HomeShell() {
       ) : null}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "map" | "feed")}>
-        <TabsList>
-          <TabsTrigger value="map">Map</TabsTrigger>
-          <TabsTrigger value="feed">Feed</TabsTrigger>
+        <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="map" className="min-h-10 flex-1 sm:flex-none">
+            Map
+          </TabsTrigger>
+          <TabsTrigger value="feed" className="min-h-10 flex-1 sm:flex-none">
+            Feed
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="map" className="space-y-3" forceMount>
@@ -254,9 +258,10 @@ export function HomeShell() {
                   <p className="text-xs text-[color:var(--muted)]">By {selectedReport.author_display_name}</p>
                 </Link>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Button
                     size="sm"
+                    className="min-h-11 w-full sm:w-auto"
                     variant={selectedReport.user_vote === "confirm" ? "default" : "ghost"}
                     disabled={selectedReportVoteMutation.isPending}
                     onClick={() => void handleSelectedReportVote("confirm")}
@@ -266,6 +271,7 @@ export function HomeShell() {
                   </Button>
                   <Button
                     size="sm"
+                    className="min-h-11 w-full sm:w-auto"
                     variant={selectedReport.user_vote === "dispute" ? "destructive" : "ghost"}
                     disabled={selectedReportVoteMutation.isPending}
                     onClick={() => void handleSelectedReportVote("dispute")}

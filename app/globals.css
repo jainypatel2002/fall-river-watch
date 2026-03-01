@@ -21,6 +21,7 @@
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
   background: radial-gradient(1200px 600px at -10% -10%, rgba(34, 211, 238, 0.16), transparent 62%),
     radial-gradient(900px 560px at 105% 0%, rgba(217, 70, 239, 0.15), transparent 58%),
     linear-gradient(180deg, #06080f 0%, #090d18 54%, #090b12 100%);
@@ -100,5 +101,23 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .shimmer::after {
     animation: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .mapboxgl-ctrl-group button {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .mapboxgl-ctrl-top-right {
+    top: 0.55rem;
+    right: 0.55rem;
+  }
+
+  .mapboxgl-ctrl-bottom-right {
+    right: auto;
+    left: 0.55rem;
+    bottom: calc(env(safe-area-inset-bottom) + 0.55rem);
   }
 }
