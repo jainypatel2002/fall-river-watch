@@ -304,12 +304,16 @@ async function writeWeatherCache({ key, payload, ttlMs }: { key: string; payload
   try {
     const admin = createSupabaseAdminClient();
     const expiresAt = new Date(expiresAtMs).toISOString();
-    const { error } = await admin.from("weather_cache").upsert({
-      key,
-      provider: PROVIDER,
-      payload,
-      expires_at: expiresAt
-    });
+    // Supabase generated types missing weather_cache columns in CI; limited cast until types regenerated.
+    const { error } = await (admin.from("weather_cache") as any).upsert(
+      {
+        key,
+        provider: PROVIDER,
+        payload,
+        expires_at: expiresAt
+      },
+      { onConflict: "key" }
+    );
     if (error) {
       console.warn("[weather-cache] write error:", error.message);
     }
