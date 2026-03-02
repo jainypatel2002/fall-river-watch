@@ -7,10 +7,20 @@ export async function jsonFetch<T>(input: RequestInfo | URL, init?: RequestInit)
     }
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const rawBody = await response.text();
+  let payload: unknown = {};
+
+  if (rawBody.length) {
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      payload = { raw: rawBody };
+    }
+  }
 
   if (!response.ok) {
-    const message = payload?.error ?? "Request failed";
+    const jsonPayload = payload as { error?: string; raw?: string };
+    const message = jsonPayload?.error ?? jsonPayload?.raw ?? "Request failed";
     const error = new Error(message) as Error & { status?: number; payload?: unknown };
     error.status = response.status;
     error.payload = payload;

@@ -31,3 +31,11 @@ export async function isAdmin(
   const role = await getUserRole(supabase, userId);
   return role === "admin";
 }
+
+export async function isMod(
+  supabase: Pick<SupabaseClient, "from">,
+  userId: string
+): Promise<boolean> {
+  const role = await getUserRole(supabase, userId);
+  return role === "mod" || role === "admin";
+}

@@ -51,6 +51,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
 
+          <nav className="hidden items-center gap-1 md:flex">
+            <Link
+              href="/"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "border border-transparent px-3 text-[color:var(--muted)] hover:border-[var(--border)]"
+              )}
+            >
+              Reports
+            </Link>
+            <Link
+              href="/events"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "border border-transparent px-3 text-[color:var(--muted)] hover:border-[var(--border)]"
+              )}
+            >
+              Events
+            </Link>
+            <Link
+              href="/groups"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "border border-transparent px-3 text-[color:var(--muted)] hover:border-[var(--border)]"
+              )}
+            >
+              Groups
+            </Link>
+          </nav>
+
           <nav className="ml-auto hidden items-center gap-2 md:flex">
             <Link
               href="/report/new"
@@ -141,7 +171,23 @@ export function AppShell({ children }: { children: ReactNode }) {
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
                   >
-                    Map & Feed
+                    Reports
+                  </Link>
+
+                  <Link
+                    href="/events"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
+                  >
+                    Events
+                  </Link>
+
+                  <Link
+                    href="/groups"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
+                  >
+                    Groups
                   </Link>
 
                   <Link

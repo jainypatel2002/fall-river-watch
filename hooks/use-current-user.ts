@@ -79,6 +79,7 @@ export function useCurrentUser() {
     user: state.user,
     role: state.role,
     isAuthenticated: Boolean(state.user),
-    isAdmin: state.role === "admin"
+    isAdmin: state.role === "admin",
+    isMod: state.role === "mod" || state.role === "admin"
   };
 }

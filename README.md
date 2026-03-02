@@ -144,6 +144,62 @@ where id = '<YOUR-USER-UUID>';
 - `/admin` Admin dashboard (role=admin)
 - `/settings/notifications` Notification preferences placeholder
 
+## Events + Groups
+
+### Events
+
+- New routes:
+  - `/events` list + map
+  - `/events/new` create
+  - `/events/:id` detail
+  - `/events/:id/edit` edit
+- Event map markers render as compact cards (title + time), expand on first tap/click, and navigate on second tap/click.
+- RSVP states are supported (`going`, `interested`) with counts.
+- Event ownership:
+  - Creator can edit/delete
+  - `mod`/`admin` can edit/delete any event
+
+### Groups
+
+- New routes:
+  - `/groups` discover + follow
+  - `/groups/new` create
+  - `/groups/:slug` group home (Posts / Events / Chat tabs)
+  - `/groups/:slug/settings` owner/mod controls
+  - `/groups/:slug/requests` pending private follow requests
+  - `/groups/:slug/chat` direct chat tab route
+- Group creation is enforced by RPC:
+  - Standard users can own at most one group.
+  - `mod`/`admin` users can create unlimited groups.
+- Follow rules:
+  - Public groups: follow accepted immediately.
+  - Private groups: follow request stays `pending` until accepted/rejected.
+- Group content guard:
+  - Posts/events/chat require accepted membership (or mod/admin override).
+  - Locked view is shown for non-members.
+
+### Chat Realtime
+
+- Group chat uses `group_chat_messages` and Supabase Realtime subscriptions by `group_id`.
+- If no messages exist, the UI shows a friendly empty state.
+
+### Database / Security
+
+- Migration file:
+  - `supabase/migrations/202603020001_events_groups.sql`
+- Includes:
+  - New tables: `groups`, `group_members`, `group_chat_messages`, `events`, `event_rsvps`
+  - Backward-compatible nullable `reports.group_id`
+  - New helper functions + RPCs:
+    - `is_mod`
+    - `create_group_atomic`
+    - `request_to_join_group`
+    - `respond_to_join_request`
+    - `toggle_group_visibility`
+    - `delete_group_atomic`
+  - RLS policies for all new tables
+  - Security updates so existing incident/report RPCs respect group-linked access rules
+
 ## Security Notes
 
 - No secrets are hardcoded.

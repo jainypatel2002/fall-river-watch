@@ -1,35 +1,71 @@
 import { NextResponse } from "next/server";
-
-export const dynamic = "force-dynamic";
-import { listEventsQuerySchema, createEventSchema } from "@/lib/schemas/events";
-import { getUserRole } from "@/lib/server/roles";
+import { createEventSchema, listEventsQuerySchema } from "@/lib/schemas/events";
 import { enrichEventsWithMeta } from "@/lib/server/events";
+import { getUserRole } from "@/lib/server/roles";
 import { requireAuth } from "@/lib/supabase/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-function normalizeSearchParams(searchParams: URLSearchParams) {
-  const raw = {
-    timeframe: searchParams.get("timeframe") ?? undefined,
-    category: searchParams.get("category") ?? undefined,
-    search: searchParams.get("search") ?? undefined,
-    groupId: searchParams.get("groupId") ?? undefined
-  };
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-  return listEventsQuerySchema.parse(raw);
+function validateSupabaseEnv() {
+  const required = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"] as const;
+  const missing = required.filter((key) => !process.env[key]);
+  if (!missing.length) return null;
+  return `Missing required Supabase environment variables: ${missing.join(", ")}`;
+}
+
+function normalizeSearchParams(searchParams: URLSearchParams) {
+  return listEventsQuerySchema.safeParse({
+    range: searchParams.get("range") ?? undefined,
+    category: searchParams.get("category") ?? undefined,
+    q: searchParams.get("q") ?? undefined
+  });
+}
+
+function rangeBounds(range: "today" | "week" | "all") {
+  const now = new Date();
+
+  if (range === "today") {
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    return { from: dayStart.toISOString(), to: dayEnd.toISOString() };
+  }
+
+  if (range === "week") {
+    const weekEnd = new Date(now);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return { from: now.toISOString(), to: weekEnd.toISOString() };
+  }
+
+  return null;
 }
 
 export async function GET(request: Request) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return NextResponse.json(
-      { error: "Configuration Error", details: "Missing required Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and/or NEXT_PUBLIC_SUPABASE_ANON_KEY" },
-      { status: 500 }
-    );
+  const envError = validateSupabaseEnv();
+  if (envError) {
+    return NextResponse.json({ ok: false, error: envError }, { status: 500 });
   }
 
   try {
     const supabase = await createSupabaseServerClient();
     const url = new URL(request.url);
-    const filters = normalizeSearchParams(url.searchParams);
+    const parsed = normalizeSearchParams(url.searchParams);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Invalid query parameters",
+          details: parsed.error.flatten()
+        },
+        { status: 400 }
+      );
+    }
+
+    const filters = parsed.data;
 
     let query = supabase.from("events").select("*").order("start_at", { ascending: true }).limit(300);
 
@@ -37,33 +73,22 @@ export async function GET(request: Request) {
       query = query.eq("category", filters.category);
     }
 
-    if (filters.search) {
-      const search = filters.search.replace(/[%_]/g, "").trim();
+    if (filters.q) {
+      const search = filters.q.replace(/[%_]/g, "").trim();
       if (search.length) {
         query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,location_name.ilike.%${search}%`);
       }
     }
 
-    if (filters.groupId) {
-      query = query.eq("group_id", filters.groupId);
-    }
-
-    const now = new Date();
-    if (filters.timeframe === "today") {
-      const dayStart = new Date(now);
-      dayStart.setHours(0, 0, 0, 0);
-      const nextDay = new Date(dayStart);
-      nextDay.setDate(nextDay.getDate() + 1);
-      query = query.gte("start_at", dayStart.toISOString()).lt("start_at", nextDay.toISOString());
-    } else if (filters.timeframe === "week") {
-      const weekEnd = new Date(now);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      query = query.gte("start_at", now.toISOString()).lt("start_at", weekEnd.toISOString());
+    const bounds = rangeBounds(filters.range);
+    if (bounds) {
+      query = query.gte("start_at", bounds.from).lt("start_at", bounds.to);
     }
 
     const { data: eventRows, error } = await query;
+
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
     }
 
     const {
@@ -80,19 +105,25 @@ export async function GET(request: Request) {
       isMod
     });
 
-    return NextResponse.json({ events });
+    return NextResponse.json(
+      { ok: true, data: events },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store"
+        }
+      }
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid request";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return NextResponse.json(
-      { error: "Configuration Error", details: "Missing required Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and/or NEXT_PUBLIC_SUPABASE_ANON_KEY" },
-      { status: 500 }
-    );
+  const envError = validateSupabaseEnv();
+  if (envError) {
+    return NextResponse.json({ ok: false, error: envError }, { status: 500 });
   }
 
   const auth = await requireAuth();
@@ -113,17 +144,21 @@ export async function POST(request: Request) {
         end_at: payload.end_at ?? null,
         location_name: payload.location_name,
         address: payload.address ?? null,
+        street: payload.street ?? null,
+        city: payload.city,
+        state: payload.state,
+        zip: payload.zip ?? null,
+        place_id: payload.place_id ?? null,
+        formatted_address: payload.formatted_address ?? null,
         lat: payload.lat,
         lng: payload.lng,
-        status: payload.status,
-        visibility: payload.visibility,
-        group_id: payload.group_id ?? null
+        status: payload.status
       })
       .select("*")
       .single();
 
     if (error || !inserted) {
-      return NextResponse.json({ error: error?.message ?? "Failed to create event" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: error?.message ?? "Failed to create event" }, { status: 400 });
     }
 
     const events = await enrichEventsWithMeta({
@@ -133,9 +168,9 @@ export async function POST(request: Request) {
       isMod: false
     });
 
-    return NextResponse.json({ event: events[0] }, { status: 201 });
+    return NextResponse.json({ ok: true, data: events[0] }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid request";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

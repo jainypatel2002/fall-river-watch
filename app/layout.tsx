@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Source_Sans_3 } from "next/font/google";
 import "@/app/globals.css";
 import { Providers } from "@/app/providers";
 import { AppShell } from "@/components/features/app-shell";
-import type { ReactNode } from "react";
-
-const headingFont = Space_Grotesk({ subsets: ["latin"], variable: "--font-heading" });
-const bodyFont = Source_Sans_3({ subsets: ["latin"], variable: "--font-body" });
+import type { CSSProperties, ReactNode } from "react";
 
 export const metadata: Metadata = {
   title: "Fall River Alert",
@@ -21,8 +17,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${headingFont.variable} ${bodyFont.variable} antialiased`}
-        style={{ fontFamily: "var(--font-body)", backgroundColor: "var(--bg)", color: "var(--fg)" }}
+        className="antialiased"
+        style={
+          {
+            "--font-heading": "\"Space Grotesk\", \"Avenir Next\", \"Segoe UI\", sans-serif",
+            "--font-body": "\"Source Sans 3\", \"Inter\", \"Segoe UI\", sans-serif",
+            fontFamily: "var(--font-body)",
+            backgroundColor: "var(--bg)",
+            color: "var(--fg)"
+          } as CSSProperties
+        }
       >
         <Providers>
           <AppShell>{children}</AppShell>
