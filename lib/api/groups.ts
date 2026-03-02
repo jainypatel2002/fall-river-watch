@@ -7,6 +7,7 @@ import type {
   GroupMembership,
   GroupPost,
   GroupRecord,
+  GroupUserPreferences,
   GroupVisibility
 } from "@/lib/types/groups";
 
@@ -112,7 +113,14 @@ export async function listGroupPosts(slug: string) {
   });
 }
 
-export async function createGroupPost(slug: string, payload: { title?: string | null; content: string }) {
+export async function createGroupPost(
+  slug: string,
+  payload: {
+    title?: string | null;
+    content: string;
+    is_anonymous: boolean;
+  }
+) {
   return jsonFetch<{ post: GroupPost }>(`/api/groups/${slug}/posts`, {
     method: "POST",
     body: JSON.stringify(payload)
@@ -138,8 +146,41 @@ export async function ensureGroupChatIdentity(slug: string) {
   });
 }
 
-export async function sendGroupChatMessage(slug: string, payload: { anon_name: string; message: string }) {
+export async function sendGroupChatMessage(
+  slug: string,
+  payload: {
+    message: string;
+    is_anonymous: boolean;
+    anon_name?: string | null;
+  }
+) {
   return jsonFetch<{ message: GroupChatMessage }>(`/api/groups/${slug}/chat`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getGroupPreferences(slug: string) {
+  return jsonFetch<{
+    preferences: GroupUserPreferences;
+    display_name: string;
+  }>(`/api/groups/${slug}/preferences`, {
+    method: "GET",
+    cache: "no-store"
+  });
+}
+
+export async function upsertGroupPreferences(
+  slug: string,
+  payload: {
+    post_anonymous?: boolean;
+    chat_anonymous?: boolean;
+  }
+) {
+  return jsonFetch<{
+    preferences: GroupUserPreferences;
+    display_name: string;
+  }>(`/api/groups/${slug}/preferences`, {
     method: "POST",
     body: JSON.stringify(payload)
   });

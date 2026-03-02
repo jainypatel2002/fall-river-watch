@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useGroupMembership } from "@/hooks/use-membership";
@@ -21,10 +22,12 @@ import {
   useGroupChatQuery,
   useGroupDetailQuery,
   useGroupMembersQuery,
+  useGroupPreferencesQuery,
   useGroupPostsQuery,
   useLeaveGroupMutation,
   useRequestFollowGroupMutation,
-  useSendGroupChatMessageMutation
+  useSendGroupChatMessageMutation,
+  useUpsertGroupPreferencesMutation
 } from "@/lib/queries/groups";
 import { queryKeys } from "@/lib/queries/keys";
 
@@ -54,6 +57,7 @@ export function GroupDetail({
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [postTitle, setPostTitle] = useState("");
   const [postContent, setPostContent] = useState("");
+  const [postAnonymous, setPostAnonymous] = useState(false);
   const [deletePostId, setDeletePostId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
@@ -62,6 +66,7 @@ export function GroupDetail({
   const createPostMutation = useCreateGroupPostMutation(slug);
   const deletePostMutation = useDeleteGroupPostMutation(slug);
   const sendMessageMutation = useSendGroupChatMessageMutation(slug);
+  const updatePreferencesMutation = useUpsertGroupPreferencesMutation(slug);
 
   const groupId = detailQuery.data?.group.id ?? "";
   const membershipState = useGroupMembership(groupId);
@@ -79,7 +84,11 @@ export function GroupDetail({
   const postsQuery = useGroupPostsQuery(slug, canAccessGroupContent);
   const membersQuery = useGroupMembersQuery(slug, canAccessGroupContent && activeTab === "members");
   const chatQuery = useGroupChatQuery(slug, canAccessGroupContent && activeTab === "chat");
-  const identityQuery = useGroupAnonIdentityQuery(slug, canAccessGroupContent && activeTab === "chat");
+  const preferencesQuery = useGroupPreferencesQuery(slug, canAccessGroupContent);
+  const chatAnonymousEnabled = preferencesQuery.data?.preferences.chat_anonymous ?? true;
+  const postAnonymousDefault = preferencesQuery.data?.preferences.post_anonymous ?? false;
+  const displayName = preferencesQuery.data?.display_name ?? "Member";
+  const identityQuery = useGroupAnonIdentityQuery(slug, canAccessGroupContent && activeTab === "chat" && chatAnonymousEnabled);
 
   useEffect(() => {
     if (!canAccessGroupContent || !groupId) return;
@@ -161,6 +170,15 @@ export function GroupDetail({
   }
 
   const deleteAllowed = deleteConfirmText.trim() === "DELETE";
+  const preferencesBusy = preferencesQuery.isLoading || updatePreferencesMutation.isPending;
+
+  const updatePrivacyPreference = async (patch: { post_anonymous?: boolean; chat_anonymous?: boolean }) => {
+    try {
+      await updatePreferencesMutation.mutateAsync(patch);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
 
   return (
     <section className="space-y-4">
@@ -209,6 +227,45 @@ export function GroupDetail({
         </div>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Privacy</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[rgba(10,15,28,0.52)] px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-[var(--fg)]">Post anonymously</p>
+              <p className="text-xs text-[color:var(--muted)]">New group posts will use your Neighbor alias.</p>
+            </div>
+            <Switch
+              checked={postAnonymousDefault}
+              onCheckedChange={(next) => {
+                void updatePrivacyPreference({ post_anonymous: next });
+              }}
+              disabled={preferencesBusy}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[rgba(10,15,28,0.52)] px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-[var(--fg)]">Chat anonymously</p>
+              <p className="text-xs text-[color:var(--muted)]">When off, chat uses your display name ({displayName}).</p>
+            </div>
+            <Switch
+              checked={chatAnonymousEnabled}
+              onCheckedChange={(next) => {
+                void updatePrivacyPreference({ chat_anonymous: next });
+              }}
+              disabled={preferencesBusy}
+            />
+          </div>
+
+          {preferencesQuery.isError ? (
+            <p className="text-xs text-rose-200">{(preferencesQuery.error as Error).message}</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "posts" | "chat" | "members")}> 
         <TabsList>
           <TabsTrigger value="posts">Posts</TabsTrigger>
@@ -218,7 +275,14 @@ export function GroupDetail({
 
         <TabsContent value="posts" className="space-y-3">
           <div className="flex justify-end">
-            <Button onClick={() => setCreatePostOpen(true)}>Create Post</Button>
+            <Button
+              onClick={() => {
+                setPostAnonymous(postAnonymousDefault);
+                setCreatePostOpen(true);
+              }}
+            >
+              Create Post
+            </Button>
           </div>
 
           {postsQuery.isLoading ? <Skeleton className="h-28" /> : null}
@@ -234,9 +298,15 @@ export function GroupDetail({
                 <div>
                   <p className="text-sm font-semibold text-[var(--fg)]">{post.title || "Group post"}</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm text-[color:var(--muted)]">{post.content}</p>
-                  <p className="mt-2 text-xs text-[color:var(--muted)]">
-                    {post.author_display_name} · {shortDate(post.created_at)}
-                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1 text-xs text-[color:var(--muted)]">
+                    <span>{post.author_display_name}</span>
+                    {post.is_anonymous ? (
+                      <span className="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-2 py-0.5 text-[10px] text-cyan-100">
+                        Anonymous
+                      </span>
+                    ) : null}
+                    <span>· {shortDate(post.created_at)}</span>
+                  </div>
                 </div>
 
                 {post.can_manage ? (
@@ -251,7 +321,11 @@ export function GroupDetail({
 
         <TabsContent value="chat" className="space-y-3">
           <div className="rounded-xl border border-[var(--border)] bg-[rgba(10,15,28,0.76)] p-3 text-xs text-[color:var(--muted)]">
-            {identityQuery.isLoading ? "Preparing anonymous identity..." : `Posting as ${identityQuery.data?.anon_name ?? "Neighbor"}`}
+            {chatAnonymousEnabled
+              ? identityQuery.isLoading
+                ? "Preparing anonymous identity..."
+                : `Chatting as ${identityQuery.data?.anon_name ?? "Neighbor"} (Anonymous)`
+              : `Chatting as ${displayName}`}
           </div>
 
           <div className="space-y-2 rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.76)] p-3">
@@ -261,7 +335,14 @@ export function GroupDetail({
             ) : null}
             {(chatQuery.data?.messages ?? []).map((message) => (
               <div key={message.id} className="rounded-xl border border-[var(--border)] bg-[rgba(9,14,27,0.78)] p-2.5">
-                <p className="text-xs font-medium text-cyan-200">{message.anon_name}</p>
+                <div className="flex items-center gap-1">
+                  <p className="text-xs font-medium text-cyan-200">{message.anon_name}</p>
+                  {message.is_anonymous ? (
+                    <span className="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-2 py-0.5 text-[10px] text-cyan-100">
+                      Anonymous
+                    </span>
+                  ) : null}
+                </div>
                 <p className="text-sm text-[var(--fg)]">{message.message}</p>
                 <p className="text-[11px] text-[color:var(--muted)]">{shortDate(message.created_at)}</p>
               </div>
@@ -273,11 +354,18 @@ export function GroupDetail({
             onSubmit={async (event) => {
               event.preventDefault();
               const next = chatMessage.trim();
-              const anonName = identityQuery.data?.anon_name;
-              if (!next || !anonName) return;
+              if (!next) return;
+
+              const isAnonymous = chatAnonymousEnabled;
+              const anonName = isAnonymous ? identityQuery.data?.anon_name ?? null : null;
+              if (isAnonymous && !anonName) return;
 
               try {
-                await sendMessageMutation.mutateAsync({ anon_name: anonName, message: next });
+                await sendMessageMutation.mutateAsync({
+                  message: next,
+                  is_anonymous: isAnonymous,
+                  anon_name: anonName
+                });
                 setChatMessage("");
               } catch (error) {
                 toast.error((error as Error).message);
@@ -285,7 +373,7 @@ export function GroupDetail({
             }}
           >
             <Input value={chatMessage} onChange={(event) => setChatMessage(event.target.value)} placeholder="Write a message" />
-            <Button type="submit" disabled={sendMessageMutation.isPending || !identityQuery.data?.anon_name}>
+            <Button type="submit" disabled={sendMessageMutation.isPending || (chatAnonymousEnabled && !identityQuery.data?.anon_name)}>
               <Send className="h-4 w-4" />
               <span className="sr-only">Send</span>
             </Button>
@@ -318,6 +406,7 @@ export function GroupDetail({
           if (!open) {
             setPostTitle("");
             setPostContent("");
+            setPostAnonymous(postAnonymousDefault);
           }
         }}
       >
@@ -335,6 +424,13 @@ export function GroupDetail({
               onChange={(event) => setPostContent(event.target.value)}
               placeholder="Share an update"
             />
+            <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[rgba(10,15,28,0.52)] px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-[var(--fg)]">Post anonymously</p>
+                <p className="text-xs text-[color:var(--muted)]">Uses your group alias instead of your display name.</p>
+              </div>
+              <Switch checked={postAnonymous} onCheckedChange={setPostAnonymous} disabled={createPostMutation.isPending} />
+            </div>
           </div>
 
           <DialogFooter>
@@ -348,12 +444,14 @@ export function GroupDetail({
                 try {
                   await createPostMutation.mutateAsync({
                     title: postTitle.trim() || null,
-                    content: postContent
+                    content: postContent,
+                    is_anonymous: postAnonymous
                   });
                   toast.success("Post created");
                   setCreatePostOpen(false);
                   setPostTitle("");
                   setPostContent("");
+                  setPostAnonymous(postAnonymousDefault);
                 } catch (error) {
                   toast.error((error as Error).message);
                 }
@@ -407,6 +505,14 @@ export function GroupDetail({
                   setDeletePostId(null);
                   setDeleteConfirmText("");
                 } catch (error) {
+                  if (process.env.NODE_ENV !== "production") {
+                    const parsed = error as Error & { status?: number; payload?: unknown };
+                    console.log("[group-post-delete] ui delete failed", {
+                      status: parsed.status,
+                      message: parsed.message,
+                      payload: parsed.payload
+                    });
+                  }
                   toast.error((error as Error).message);
                 }
               }}

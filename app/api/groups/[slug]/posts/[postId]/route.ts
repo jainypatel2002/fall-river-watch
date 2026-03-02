@@ -22,34 +22,43 @@ export async function DELETE(_request: Request, context: { params: Promise<{ slu
       return NextResponse.json({ error: "Group not found" }, { status: 404 });
     }
 
-    const { data: post, error: postError } = await auth.supabase
+    const { error, count } = await auth.supabase
       .from("group_posts")
-      .select("id, group_id, author_user_id")
+      .delete({ count: "exact" })
       .eq("id", postId)
-      .maybeSingle();
-
-    if (postError) {
-      return NextResponse.json({ error: postError.message }, { status: 400 });
-    }
-
-    if (!post || post.group_id !== groupContext.group.id) {
-      return NextResponse.json({ error: "Post not found" }, { status: 404 });
-    }
-
-    const canDelete = post.author_user_id === auth.user.id || groupContext.canManage;
-
-    if (!canDelete) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { error } = await auth.supabase.from("group_posts").delete().eq("id", post.id);
+      .eq("group_id", groupContext.group.id)
 
     if (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[group-post-delete] delete failed", {
+          code: error.code,
+          message: error.message,
+          postId,
+          groupId: groupContext.group.id
+        });
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    if (!count) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[group-post-delete] no rows deleted", {
+          postId,
+          groupId: groupContext.group.id,
+          userId: auth.user.id
+        });
+      }
+      return NextResponse.json({ error: "Post not found or you do not have permission to delete it" }, { status: 404 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      const parsed = error as Error;
+      console.log("[group-post-delete] unexpected error", {
+        message: parsed.message
+      });
+    }
     const message = error instanceof Error ? error.message : "Request failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }

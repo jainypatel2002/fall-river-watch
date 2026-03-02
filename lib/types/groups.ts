@@ -46,6 +46,8 @@ export type GroupPost = {
   author_user_id: string;
   title: string | null;
   content: string;
+  is_anonymous: boolean;
+  anon_name: string | null;
   created_at: string;
   updated_at: string;
   author_display_name: string;
@@ -57,7 +59,17 @@ export type GroupChatMessage = {
   group_id: string;
   user_id: string;
   anon_name: string;
+  is_anonymous: boolean;
   message: string;
   created_at: string;
   is_owner: boolean;
+};
+
+export type GroupUserPreferences = {
+  group_id: string;
+  user_id: string;
+  post_anonymous: boolean;
+  chat_anonymous: boolean;
+  created_at: string | null;
+  updated_at: string | null;
 };

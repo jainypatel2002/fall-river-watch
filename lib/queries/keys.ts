@@ -12,5 +12,6 @@ export const queryKeys = {
   groupMembers: (slug: string) => ["group-members", slug] as const,
   groupPosts: (slug: string) => ["group-posts", slug] as const,
   groupChat: (slug: string) => ["group-chat", slug] as const,
-  groupChatIdentity: (slug: string) => ["group-chat-identity", slug] as const
+  groupChatIdentity: (slug: string) => ["group-chat-identity", slug] as const,
+  groupPreferences: (slug: string) => ["group-preferences", slug] as const
 };

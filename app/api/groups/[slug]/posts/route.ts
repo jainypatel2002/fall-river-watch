@@ -12,6 +12,8 @@ async function withAuthorProfiles(
     author_user_id: string;
     title: string | null;
     content: string;
+    is_anonymous: boolean;
+    anon_name: string | null;
     created_at: string;
     updated_at: string;
   }>,
@@ -23,12 +25,12 @@ async function withAuthorProfiles(
 ): Promise<GroupPost[]> {
   const profileById = new Map<string, string>();
   for (const row of profileRows ?? []) {
-    profileById.set(row.id, row.display_name?.trim() || "Neighbor");
+    profileById.set(row.id, row.display_name?.trim() || "Member");
   }
 
   return rows.map((row) => ({
     ...row,
-    author_display_name: profileById.get(row.author_user_id) ?? "Neighbor",
+    author_display_name: row.is_anonymous ? row.anon_name?.trim() || "Neighbor" : profileById.get(row.author_user_id) ?? "Member",
     can_manage: roleLookup.isManager || row.author_user_id === roleLookup.userId
   }));
 }
@@ -58,7 +60,7 @@ export async function GET(_request: Request, context: { params: Promise<{ slug: 
 
     const { data, error } = await auth.supabase
       .from("group_posts")
-      .select("id, group_id, author_user_id, title, content, created_at, updated_at")
+      .select("id, group_id, author_user_id, title, content, is_anonymous, anon_name, created_at, updated_at")
       .eq("group_id", groupContext.group.id)
       .order("created_at", { ascending: false })
       .limit(120);
@@ -106,6 +108,20 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
 
     const body = await request.json();
     const payload = createGroupPostSchema.parse(body);
+    const isAnonymous = payload.is_anonymous ?? false;
+    let anonName: string | null = null;
+
+    if (isAnonymous) {
+      const { data, error } = await auth.supabase.rpc("ensure_group_anon_identity", {
+        p_group_id: groupContext.group.id
+      });
+
+      if (error || !data) {
+        return NextResponse.json({ error: error?.message ?? "Failed to initialize anonymous identity" }, { status: 400 });
+      }
+
+      anonName = data;
+    }
 
     const { data, error } = await auth.supabase
       .from("group_posts")
@@ -113,9 +129,11 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         group_id: groupContext.group.id,
         author_user_id: auth.user.id,
         title: payload.title?.trim() || null,
-        content: payload.content.trim()
+        content: payload.content.trim(),
+        is_anonymous: isAnonymous,
+        anon_name: isAnonymous ? anonName : null
       })
-      .select("id, group_id, author_user_id, title, content, created_at, updated_at")
+      .select("id, group_id, author_user_id, title, content, is_anonymous, anon_name, created_at, updated_at")
       .single();
 
     if (error || !data) {

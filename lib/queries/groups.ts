@@ -7,6 +7,7 @@ import {
   deleteGroup,
   deleteGroupPost,
   ensureGroupChatIdentity,
+  getGroupPreferences,
   getGroupBySlug,
   getMembership,
   leaveGroup,
@@ -19,11 +20,18 @@ import {
   respondToGroupRequest,
   sendGroupChatMessage,
   toggleGroupVisibility,
-  updateGroup
+  updateGroup,
+  upsertGroupPreferences
 } from "@/lib/api/groups";
 import { queryKeys } from "@/lib/queries/keys";
 import type { CreateGroupInput } from "@/lib/schemas/groups";
-import type { GroupVisibility } from "@/lib/types/groups";
+import type { GroupPost, GroupUserPreferences, GroupVisibility } from "@/lib/types/groups";
+
+type GroupPostsQueryData = { posts: GroupPost[] };
+type GroupPreferencesQueryData = {
+  preferences: GroupUserPreferences;
+  display_name: string;
+};
 
 export function useGroupsQuery(search: string) {
   return useQuery({
@@ -88,6 +96,14 @@ export function useGroupAnonIdentityQuery(slug: string, enabled: boolean) {
     queryFn: () => ensureGroupChatIdentity(slug),
     enabled: Boolean(slug) && enabled,
     staleTime: 5 * 60 * 1000
+  });
+}
+
+export function useGroupPreferencesQuery(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.groupPreferences(slug),
+    queryFn: () => getGroupPreferences(slug),
+    enabled: Boolean(slug) && enabled
   });
 }
 
@@ -175,7 +191,7 @@ export function useLeaveGroupMutation(slug: string) {
 export function useCreateGroupPostMutation(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { title?: string | null; content: string }) => createGroupPost(slug, payload),
+    mutationFn: (payload: { title?: string | null; content: string; is_anonymous: boolean }) => createGroupPost(slug, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.groupPosts(slug) });
     }
@@ -186,7 +202,34 @@ export function useDeleteGroupPostMutation(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (postId: string) => deleteGroupPost(slug, postId),
-    onSuccess: async () => {
+    onMutate: async (postId) => {
+      const queryKey = queryKeys.groupPosts(slug);
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<GroupPostsQueryData>(queryKey);
+
+      if (previous) {
+        queryClient.setQueryData<GroupPostsQueryData>(queryKey, {
+          posts: previous.posts.filter((post) => post.id !== postId)
+        });
+      }
+
+      return { previous };
+    },
+    onError: (error, _postId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.groupPosts(slug), context.previous);
+      }
+
+      if (process.env.NODE_ENV !== "production") {
+        const parsed = error as Error & { status?: number; payload?: unknown };
+        console.log("[group-post-delete] mutation failed", {
+          status: parsed.status,
+          message: parsed.message,
+          payload: parsed.payload
+        });
+      }
+    },
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.groupPosts(slug) });
     }
   });
@@ -195,9 +238,45 @@ export function useDeleteGroupPostMutation(slug: string) {
 export function useSendGroupChatMessageMutation(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { anon_name: string; message: string }) => sendGroupChatMessage(slug, payload),
+    mutationFn: (payload: { message: string; is_anonymous: boolean; anon_name?: string | null }) =>
+      sendGroupChatMessage(slug, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.groupChat(slug) });
+    }
+  });
+}
+
+export function useUpsertGroupPreferencesMutation(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { post_anonymous?: boolean; chat_anonymous?: boolean }) => upsertGroupPreferences(slug, payload),
+    onMutate: async (payload) => {
+      const queryKey = queryKeys.groupPreferences(slug);
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<GroupPreferencesQueryData>(queryKey);
+
+      if (previous) {
+        queryClient.setQueryData<GroupPreferencesQueryData>(queryKey, {
+          ...previous,
+          preferences: {
+            ...previous.preferences,
+            ...payload
+          }
+        });
+      }
+
+      return { previous };
+    },
+    onError: (_error, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.groupPreferences(slug), context.previous);
+      }
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.groupPreferences(slug), data);
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupPreferences(slug) });
     }
   });
 }
