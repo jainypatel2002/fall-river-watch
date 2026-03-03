@@ -16,6 +16,7 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { WeatherPanel } from "@/components/features/weather-panel";
 import { WeatherPill } from "@/components/features/weather-pill";
+import { AddToHomeScreenModal } from "@/src/components/AddToHomeScreenModal";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -255,6 +256,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <main className="mx-auto w-full max-w-7xl px-4 py-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:px-6 sm:py-6 lg:px-8">{children}</main>
       <WeatherPanel />
+      <AddToHomeScreenModal />
     </div>
   );
 }

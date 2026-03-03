@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
     p256dh TEXT NOT NULL,
     auth TEXT NOT NULL,
     user_agent TEXT NULL,
+
+
+
+
+
+    
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
