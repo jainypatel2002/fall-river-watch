@@ -30,7 +30,7 @@ const DEFAULT_FILTERS: NewsFiltersValue = {
 export default function NewsPage() {
   const supabase = useSupabaseBrowser();
   const uiToast = useUiToast();
-  const { isAdmin, isLoading: roleLoading } = useRole();
+  const { isMod, isLoading: roleLoading } = useRole();
 
   const [filters, setFilters] = useState<NewsFiltersValue>(DEFAULT_FILTERS);
   const [items, setItems] = useState<NewsItemRecord[]>([]);
@@ -54,6 +54,11 @@ export default function NewsPage() {
     }),
     [filters.category, filters.officialOnly, filters.search, filters.source]
   );
+  const isDefaultFilters =
+    selectedFilters.category === "all" &&
+    selectedFilters.source === "all" &&
+    !selectedFilters.officialOnly &&
+    selectedFilters.search.length === 0;
 
   const fetchNewsPage = useCallback(
     async (offset: number, append: boolean) => {
@@ -175,17 +180,16 @@ export default function NewsPage() {
       });
 
       const body = (await response.json().catch(() => null)) as
-        | { ok?: boolean; items_inserted?: number; items_skipped?: number; error?: string }
+        | { ok?: boolean; inserted?: number; skipped?: number; items_inserted?: number; items_skipped?: number; error?: string }
         | null;
 
       if (!response.ok || !body?.ok) {
         throw new Error(body?.error || "Failed to refresh local news");
       }
 
-      uiToast.success(
-        "News refreshed",
-        `${body.items_inserted ?? 0} inserted, ${body.items_skipped ?? 0} skipped`
-      );
+      const inserted = body.inserted ?? body.items_inserted ?? 0;
+      const skipped = body.skipped ?? body.items_skipped ?? 0;
+      uiToast.success(`News refreshed (${inserted} new)`, `${skipped} skipped`);
       setRefreshToken((value) => value + 1);
     } catch (refreshError) {
       const message = refreshError instanceof Error ? refreshError.message : "Failed to refresh local news";
@@ -207,7 +211,7 @@ export default function NewsPage() {
           </p>
         </div>
 
-        {!roleLoading && isAdmin ? (
+        {!roleLoading && isMod ? (
           <Button
             type="button"
             variant="secondary"
@@ -235,7 +239,9 @@ export default function NewsPage() {
         </div>
       ) : items.length === 0 ? (
         <p className="rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.78)] p-4 text-sm text-[color:var(--muted)]">
-          No news found for the current filters.
+          {isDefaultFilters
+            ? "No news yet. Admins can run refresh to fetch the latest headlines."
+            : "No news found for the current filters."}
         </p>
       ) : (
         <div className="space-y-3">
