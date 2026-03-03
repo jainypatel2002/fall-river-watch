@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative flex min-h-screen flex-col">
       <header
         className="sticky top-0 z-40 border-b border-[var(--border)] bg-[rgba(6,9,15,0.82)] backdrop-blur-md"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
@@ -61,6 +61,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             >
               Reports
+            </Link>
+            <Link
+              href="/feed"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "border border-transparent px-3 text-[color:var(--muted)] hover:border-[var(--border)]"
+              )}
+            >
+              Feed
             </Link>
             <Link
               href="/events"
@@ -185,6 +194,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </Link>
 
                   <Link
+                    href="/feed"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
+                  >
+                    Feed
+                  </Link>
+
+                  <Link
                     href="/events"
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
@@ -193,19 +210,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </Link>
 
                   <Link
-                    href="/groups"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
-                  >
-                    Groups
-                  </Link>
-
-                  <Link
                     href="/news"
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
                   >
                     News
+                  </Link>
+
+                  <Link
+                    href="/groups"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
+                  >
+                    Groups
                   </Link>
 
                   <Link
@@ -271,7 +288,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:px-6 sm:py-6 lg:px-8">{children}</main>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">{children}</main>
+      <footer className="mx-auto w-full max-w-7xl px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-2 text-center text-xs text-[color:var(--muted)] opacity-60 sm:px-6 lg:px-8">
+        Created by Jainy Patel
+      </footer>
       <WeatherPanel />
       <AddToHomeScreenModal />
     </div>

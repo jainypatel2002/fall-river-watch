@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
+import { INCIDENT_VERIFY_CONFIRM_THRESHOLD } from "@/lib/constants";
 import { useCreateReportMutation } from "@/lib/queries/reports";
 import { createReportSchema, type CreateReportInput } from "@/lib/schemas/report";
 import { metersToMiles, milesToMeters } from "@/lib/utils/geo";
@@ -275,7 +276,9 @@ export function NewReportForm() {
       <CardHeader className="space-y-4">
         <div>
           <CardTitle style={{ fontFamily: "var(--font-heading)" }}>Create Report</CardTitle>
-          <CardDescription>Reports expire after 24h unless community verification thresholds are reached.</CardDescription>
+          <CardDescription>
+            Reports expire after 24h unless they reach {INCIDENT_VERIFY_CONFIRM_THRESHOLD} community confirms.
+          </CardDescription>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
