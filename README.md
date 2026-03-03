@@ -45,6 +45,13 @@ Optional server-only placeholders:
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `APP_BASE_URL`
+- `NEWS_INGEST_SECRET` (required for `/api/news/ingest`)
+
+## Vercel Cron (Hobby)
+
+- `vercel.json` is configured for one daily ingest run: `0 8 * * *`.
+- Cron path uses a placeholder secret: `/api/news/ingest?secret=REPLACE_WITH_NEWS_INGEST_SECRET`.
+- Replace `REPLACE_WITH_NEWS_INGEST_SECRET` with the same value you set for `NEWS_INGEST_SECRET` before deploying, since `vercel.json` cannot read env vars.
 
 Weather cache note:
 

@@ -14,7 +14,7 @@ export async function POST() {
   }
 
   const role = await getUserRole(auth.supabase, auth.user.id);
-  if (role !== "admin" && role !== "mod") {
+  if (role !== "admin") {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 

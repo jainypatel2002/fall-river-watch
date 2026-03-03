@@ -30,7 +30,7 @@ const DEFAULT_FILTERS: NewsFiltersValue = {
 export default function NewsPage() {
   const supabase = useSupabaseBrowser();
   const uiToast = useUiToast();
-  const { isMod, isLoading: roleLoading } = useRole();
+  const { isAdmin, isLoading: roleLoading } = useRole();
 
   const [filters, setFilters] = useState<NewsFiltersValue>(DEFAULT_FILTERS);
   const [items, setItems] = useState<NewsItemRecord[]>([]);
@@ -207,7 +207,7 @@ export default function NewsPage() {
           </p>
         </div>
 
-        {!roleLoading && isMod ? (
+        {!roleLoading && isAdmin ? (
           <Button
             type="button"
             variant="secondary"
@@ -216,7 +216,7 @@ export default function NewsPage() {
             disabled={isRefreshing}
           >
             {isRefreshing ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-            Refresh News
+            Run News Ingest Now
           </Button>
         ) : null}
       </div>

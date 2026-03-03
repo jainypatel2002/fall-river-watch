@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/news/ingest?secret=YOUR_SECRET_VALUE",
-      "schedule": "*/15 * * * *"
+      "path": "/api/news/ingest?secret=REPLACE_WITH_NEWS_INGEST_SECRET",
+      "schedule": "0 8 * * *"
     }
   ]
 }
