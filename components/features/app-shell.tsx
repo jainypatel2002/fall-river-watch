@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, LoaderCircle, LogOut, Menu, Plus, ShieldCheck, User } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -22,9 +22,22 @@ import type { ReactNode } from "react";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = useSupabaseBrowser();
   const { isAuthenticated, isAdmin, isLoading } = useCurrentUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (pathname === "/feed") return;
+
+    const selector = '[data-feed-location-overlay="true"]';
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement.closest(selector)) {
+      activeElement.blur();
+    }
+
+    document.querySelectorAll(`body > ${selector}`).forEach((node) => node.remove());
+  }, [pathname]);
 
   async function handleLogout() {
     await supabase.auth.signOut();

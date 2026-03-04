@@ -253,10 +253,10 @@ export function LocationSearch({
   const dropdownClasses =
     dropdownMode === "inline"
       ? "mt-2 overflow-hidden rounded-xl border border-[rgba(124,146,184,0.45)] bg-[rgba(7,11,20,0.98)] shadow-[0_20px_34px_rgba(0,0,0,0.45)]"
-      : "absolute left-3 right-3 top-[calc(100%-2px)] z-[90] mt-2 overflow-hidden rounded-xl border border-[rgba(124,146,184,0.45)] bg-[rgba(7,11,20,0.98)] shadow-[0_20px_34px_rgba(0,0,0,0.45)]";
+      : "absolute left-3 right-3 top-[calc(100%-2px)] z-20 mt-2 overflow-hidden rounded-xl border border-[rgba(124,146,184,0.45)] bg-[rgba(7,11,20,0.98)] shadow-[0_20px_34px_rgba(0,0,0,0.45)]";
 
   return (
-    <div className={cn("relative z-[80] rounded-2xl border border-[var(--border)] bg-[rgba(9,14,27,0.72)] p-3", className)}>
+    <div className={cn("relative z-10 rounded-2xl border border-[var(--border)] bg-[rgba(9,14,27,0.72)] p-3", className)}>
       {showTitle ? <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--muted)]">{title}</p> : null}
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--muted)]" />

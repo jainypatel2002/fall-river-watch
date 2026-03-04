@@ -109,15 +109,17 @@ export function FeedShell() {
       </div>
 
       {showFeedLocationSearch ? (
-        <LocationSearch
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onSelectLocation={onSelectLocation}
-          onClearSearch={handleClearSearch}
-          getProximity={() => feedCenter}
-          title="Feed Location"
-          showHint={false}
-        />
+        <div data-feed-location-overlay="true">
+          <LocationSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSelectLocation={onSelectLocation}
+            onClearSearch={handleClearSearch}
+            getProximity={() => feedCenter}
+            title="Feed Location"
+            showHint={false}
+          />
+        </div>
       ) : null}
 
       {incidentsQuery.error ? (
