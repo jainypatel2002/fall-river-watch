@@ -8,6 +8,7 @@ import { AlertCircle, CheckCircle2, CircleAlert, LoaderCircle, ShieldAlert } fro
 import { CategoryLayerControl } from "@/components/map/category-layer-control";
 import { LocationSearch } from "@/components/map/LocationSearch";
 import { MobileMapControlsSheet } from "@/components/features/mobile-map-controls-sheet";
+import { ReportFeed } from "@/components/features/report-feed";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,7 +17,7 @@ import { useReportsRealtime } from "@/hooks/use-reports-realtime";
 import { useWeatherTarget } from "@/hooks/use-weather-target";
 import { useSupabaseBrowser } from "@/hooks/use-supabase-browser";
 import { useUiToast } from "@/hooks/use-ui-toast";
-import { useIncidentsMapQuery } from "@/lib/queries/incidents";
+import { useIncidentsMapQuery, useRecentReportsQuery } from "@/lib/queries/incidents";
 import { useWeatherQuery } from "@/lib/queries/weather";
 import { useVoteMutation } from "@/lib/queries/reports";
 import { useMapSearchStore } from "@/lib/store/map-search-store";
@@ -108,6 +109,31 @@ export function HomeShell() {
       ...item,
       distance_meters: haversineMeters(mapCenter, { lat: item.lat, lng: item.lng })
     }));
+
+  const recentReportFilters = useMemo(
+    () => ({
+      center: mapCenter,
+      radiusMiles,
+      categories,
+      timeRange: timeWindow
+    }),
+    [categories, mapCenter, radiusMiles, timeWindow]
+  );
+
+  const recentReportsQuery = useRecentReportsQuery(recentReportFilters, isMobile);
+  const recentReports = useMemo(
+    () =>
+      (recentReportsQuery.data?.items ?? [])
+        .filter((item) => !verifiedOnly || item.status === "verified")
+        .filter((item) => haversineMeters(mapCenter, { lat: item.lat, lng: item.lng }) <= radiusMiles * 1609.344)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .map((item) => ({
+          ...item,
+          distance_meters: haversineMeters(mapCenter, { lat: item.lat, lng: item.lng }),
+          status: item.status as "unverified" | "verified" | "disputed" | "resolved" | "expired"
+        })),
+    [mapCenter, radiusMiles, recentReportsQuery.data?.items, verifiedOnly]
+  );
 
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
   const selectedReportVoteMutation = useVoteMutation(selectedReport?.id ?? "");
@@ -232,6 +258,7 @@ export function HomeShell() {
             center={mapCenter}
             userLocation={userLocation}
             isActive
+            containerClassName={isMobile ? "h-[42dvh] min-h-[16rem]" : undefined}
             weatherAlerts={weatherQuery.data?.alerts ?? []}
             weatherAlertCenter={weatherTarget.coordinates}
             showWeatherAlerts={showWeatherAlertsLayer}
@@ -283,7 +310,7 @@ export function HomeShell() {
           />
         ) : null}
 
-        {selectedReport ? (
+        {!isMobile && selectedReport ? (
           <Card>
             <CardContent className="space-y-3 p-4">
               <Link href={`/report/${selectedReport.id}`} className="block space-y-2">
@@ -323,6 +350,26 @@ export function HomeShell() {
               </div>
             </CardContent>
           </Card>
+        ) : null}
+
+        {isMobile ? (
+          <section className="space-y-2 rounded-2xl border border-[var(--border)] bg-[rgba(10,15,28,0.76)] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold tracking-wide text-[var(--fg)]" style={{ fontFamily: "var(--font-heading)" }}>
+                Recent Reports
+              </h2>
+              {recentReportsQuery.isFetching && !recentReportsQuery.isPending ? (
+                <span className="text-xs text-[color:var(--muted)]">Refreshing...</span>
+              ) : null}
+            </div>
+            <div className="max-h-[44dvh] overflow-y-auto pb-[max(env(safe-area-inset-bottom),0.35rem)] pr-1">
+              <ReportFeed
+                reports={recentReports}
+                isLoading={recentReportsQuery.isPending}
+                error={recentReportsQuery.error ? (recentReportsQuery.error as Error).message : undefined}
+              />
+            </div>
+          </section>
         ) : null}
       </div>
     </section>

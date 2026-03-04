@@ -42,6 +42,7 @@ type IncidentMapProps = {
   onUserLocationFound?: (coords: { lat: number; lng: number }) => void;
   onLocateError?: (message: string) => void;
   mobileControlsOffsetClassName?: string;
+  containerClassName?: string;
 };
 
 type SearchTarget = {
@@ -272,7 +273,8 @@ export default function IncidentMap({
   onViewportChange,
   onUserLocationFound,
   onLocateError,
-  mobileControlsOffsetClassName
+  mobileControlsOffsetClassName,
+  containerClassName
 }: IncidentMapProps) {
   const centerLat = center.lat;
   const centerLng = center.lng;
@@ -944,16 +946,19 @@ export default function IncidentMap({
     );
   }, [flyToLocation, isLocating]);
 
+  const mapContainerClassName =
+    "relative h-[calc(100dvh-9.75rem)] min-h-[24rem] w-full overflow-hidden rounded-2xl border border-[var(--border)] sm:h-[62vh] sm:min-h-[22rem]";
+
   if (!token) {
     return (
-      <div className="grid h-[58vh] min-h-[20rem] place-items-center rounded-2xl border border-[var(--border)] bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)] sm:h-[62vh] sm:min-h-[22rem]">
+      <div className={cn(mapContainerClassName, "grid place-items-center bg-[rgba(11,16,29,0.8)] text-sm text-[color:var(--muted)]", containerClassName)}>
         Missing `NEXT_PUBLIC_MAPBOX_TOKEN`.
       </div>
     );
   }
 
   return (
-    <div className="relative h-[calc(100dvh-9.75rem)] min-h-[24rem] w-full overflow-hidden rounded-2xl border border-[var(--border)] sm:h-[62vh] sm:min-h-[22rem]">
+    <div className={cn(mapContainerClassName, containerClassName)}>
       <div ref={mapContainerRef} className="h-full w-full" />
       <button
         type="button"

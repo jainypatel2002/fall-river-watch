@@ -16,10 +16,12 @@ export function useReportsRealtime(enabled = true) {
       .on("postgres_changes", { event: "*", schema: "public", table: "reports" }, () => {
         void queryClient.invalidateQueries({ queryKey: ["reports"] });
         void queryClient.invalidateQueries({ queryKey: ["incidents-map"] });
+        void queryClient.invalidateQueries({ queryKey: ["recent-reports"] });
         void queryClient.invalidateQueries({ queryKey: ["incident-detail"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "report_votes" }, () => {
         void queryClient.invalidateQueries({ queryKey: ["reports"] });
+        void queryClient.invalidateQueries({ queryKey: ["recent-reports"] });
         void queryClient.invalidateQueries({ queryKey: ["incident-detail"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "incident_comments" }, () => {

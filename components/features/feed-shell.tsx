@@ -1,12 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { LocationSearch } from "@/components/map/LocationSearch";
 import { ReportFeed } from "@/components/features/report-feed";
 import { useReportsRealtime } from "@/hooks/use-reports-realtime";
-import { useIncidentsMapQuery } from "@/lib/queries/incidents";
+import { useRecentReportsQuery } from "@/lib/queries/incidents";
 import { useMapSearchStore } from "@/lib/store/map-search-store";
 import { useUiStore } from "@/lib/store/ui-store";
 
@@ -32,61 +32,45 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
   return earthRadiusMeters * arc;
 }
 
-function clampLatitude(value: number) {
-  return Math.max(-90, Math.min(90, value));
-}
-
-function normalizeLongitude(value: number) {
-  let normalized = value;
-  while (normalized < -180) normalized += 360;
-  while (normalized > 180) normalized -= 360;
-  return normalized;
-}
-
-function radiusToBbox(center: { lat: number; lng: number }, radiusMiles: number) {
-  const latDelta = radiusMiles / 69;
-  const lngMilesPerDegree = Math.max(Math.cos(toRadians(center.lat)) * 69.172, 0.01);
-  const lngDelta = radiusMiles / lngMilesPerDegree;
-
-  return {
-    west: normalizeLongitude(center.lng - lngDelta),
-    south: clampLatitude(center.lat - latDelta),
-    east: normalizeLongitude(center.lng + lngDelta),
-    north: clampLatitude(center.lat + latDelta)
-  };
-}
+const DEFAULT_FEED_CENTER = { lat: 41.7001, lng: -71.155 };
 
 export function FeedShell() {
   useReportsRealtime(true);
+  const [feedCenter, setFeedCenter] = useState(DEFAULT_FEED_CENTER);
 
-  const { categories, timeWindow, radiusMiles, verifiedOnly, mapCenter, setMapCenter, setSelectedReportId } = useUiStore();
+  const { categories, timeWindow, radiusMiles, verifiedOnly, setSelectedReportId } = useUiStore();
   const searchQuery = useMapSearchStore((state) => state.searchQuery);
   const setSearchQuery = useMapSearchStore((state) => state.setSearchQuery);
   const setSelectedLocation = useMapSearchStore((state) => state.setSelectedLocation);
   const clearSelectedLocation = useMapSearchStore((state) => state.clearSelectedLocation);
 
-  const mapFilters = useMemo(
+  const recentReportFilters = useMemo(
     () => ({
-      bbox: radiusToBbox(mapCenter, radiusMiles),
+      center: feedCenter,
+      radiusMiles,
       categories,
       timeRange: timeWindow
     }),
-    [categories, mapCenter, radiusMiles, timeWindow]
+    [categories, feedCenter, radiusMiles, timeWindow]
   );
 
-  const incidentsQuery = useIncidentsMapQuery(mapFilters);
+  // Feed used to share "incidents-map" query cache with the landing map viewport.
+  // That made Feed appear empty after navigation when the cached viewport result was stale.
+  // A dedicated "recent-reports" query key with mount refetch keeps Feed loading reliably.
+  const incidentsQuery = useRecentReportsQuery(recentReportFilters);
 
   const reports = useMemo(
     () =>
       (incidentsQuery.data?.items ?? [])
         .filter((item) => !verifiedOnly || item.status === "verified")
-        .filter((item) => haversineMeters(mapCenter, { lat: item.lat, lng: item.lng }) <= radiusMiles * 1609.344)
+        .filter((item) => haversineMeters(feedCenter, { lat: item.lat, lng: item.lng }) <= radiusMiles * 1609.344)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .map((item) => ({
           ...item,
-          distance_meters: haversineMeters(mapCenter, { lat: item.lat, lng: item.lng }),
+          distance_meters: haversineMeters(feedCenter, { lat: item.lat, lng: item.lng }),
           status: item.status as "unverified" | "verified" | "disputed" | "resolved" | "expired"
         })),
-    [incidentsQuery.data?.items, mapCenter, radiusMiles, verifiedOnly]
+    [feedCenter, incidentsQuery.data?.items, radiusMiles, verifiedOnly]
   );
 
   const onSelectLocation = useCallback(
@@ -98,10 +82,15 @@ export function FeedShell() {
         lat: location.lat,
         lng: location.lng
       });
-      setMapCenter({ lat: location.lat, lng: location.lng });
+      setFeedCenter({ lat: location.lat, lng: location.lng });
     },
-    [setMapCenter, setSelectedLocation, setSelectedReportId]
+    [setSelectedLocation, setSelectedReportId]
   );
+
+  const handleClearSearch = useCallback(() => {
+    clearSelectedLocation();
+    setFeedCenter(DEFAULT_FEED_CENTER);
+  }, [clearSelectedLocation]);
 
   return (
     <section className="mx-auto w-full max-w-5xl space-y-4 pb-20 sm:space-y-5">
@@ -119,8 +108,8 @@ export function FeedShell() {
         value={searchQuery}
         onChange={setSearchQuery}
         onSelectLocation={onSelectLocation}
-        onClearSearch={clearSelectedLocation}
-        getProximity={() => mapCenter}
+        onClearSearch={handleClearSearch}
+        getProximity={() => feedCenter}
         title="Feed Location"
         showHint={false}
       />
@@ -132,7 +121,11 @@ export function FeedShell() {
         </div>
       ) : null}
 
-      <ReportFeed reports={reports} isLoading={incidentsQuery.isLoading} error={incidentsQuery.error ? (incidentsQuery.error as Error).message : undefined} />
+      <ReportFeed
+        reports={reports}
+        isLoading={incidentsQuery.isPending || incidentsQuery.isFetching}
+        error={incidentsQuery.error ? (incidentsQuery.error as Error).message : undefined}
+      />
     </section>
   );
 }

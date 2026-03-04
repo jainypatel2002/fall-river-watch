@@ -135,12 +135,19 @@ export function useReportDetailQuery(id: string) {
 }
 
 export function useCreateReportMutation() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (payload: CreateReportInput) =>
       jsonFetch<{ id: string }>("/api/reports", {
         method: "POST",
         body: JSON.stringify(payload)
-      })
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["reports"] });
+      await queryClient.invalidateQueries({ queryKey: ["incidents-map"] });
+      await queryClient.invalidateQueries({ queryKey: ["recent-reports"] });
+    }
   });
 }
 
@@ -180,10 +187,14 @@ export function useVoteMutation(reportId: string) {
     onMutate: async (status) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.reportDetail(reportId) });
       await queryClient.cancelQueries({ queryKey: ["incidents-map"] });
+      await queryClient.cancelQueries({ queryKey: ["recent-reports"] });
 
       const previous = queryClient.getQueryData<ReportDetailResponse | undefined>(queryKeys.reportDetail(reportId));
       const previousIncidents = queryClient.getQueriesData<IncidentsMapCache>({
         queryKey: ["incidents-map"]
+      });
+      const previousRecentReports = queryClient.getQueriesData<IncidentsMapCache>({
+        queryKey: ["recent-reports"]
       });
 
       if (previous) {
@@ -226,13 +237,43 @@ export function useVoteMutation(reportId: string) {
         });
       }
 
-      return { previous, previousIncidents };
+      for (const [queryKey, recentData] of previousRecentReports) {
+        if (!recentData) continue;
+
+        const nextItems = recentData.items.map((item) => {
+          if (item.id !== reportId) return item;
+          const optimistic = getOptimisticVoteSnapshot(
+            {
+              confirms: Number(item.confirms ?? 0),
+              disputes: Number(item.disputes ?? 0),
+              user_vote: item.user_vote ?? null
+            },
+            status
+          );
+          return {
+            ...item,
+            confirms: optimistic.confirms,
+            disputes: optimistic.disputes,
+            user_vote: optimistic.user_vote
+          };
+        });
+
+        queryClient.setQueryData(queryKey, {
+          ...recentData,
+          items: nextItems
+        });
+      }
+
+      return { previous, previousIncidents, previousRecentReports };
     },
     onError: (_error, _status, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.reportDetail(reportId), context.previous);
       }
       for (const [queryKey, snapshot] of context?.previousIncidents ?? []) {
+        queryClient.setQueryData(queryKey, snapshot);
+      }
+      for (const [queryKey, snapshot] of context?.previousRecentReports ?? []) {
         queryClient.setQueryData(queryKey, snapshot);
       }
     },
@@ -271,11 +312,33 @@ export function useVoteMutation(reportId: string) {
           )
         });
       }
+
+      const recentReportQueries = queryClient.getQueriesData<IncidentsMapCache>({
+        queryKey: ["recent-reports"]
+      });
+
+      for (const [queryKey, recentData] of recentReportQueries) {
+        if (!recentData) continue;
+        queryClient.setQueryData(queryKey, {
+          ...recentData,
+          items: recentData.items.map((item) =>
+            item.id === reportId
+              ? {
+                  ...item,
+                  confirms: result.vote.confirms,
+                  disputes: result.vote.disputes,
+                  user_vote: result.vote.user_vote
+                }
+              : item
+          )
+        });
+      }
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reportDetail(reportId) });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
       void queryClient.invalidateQueries({ queryKey: ["incidents-map"] });
+      void queryClient.invalidateQueries({ queryKey: ["recent-reports"] });
     }
   });
 }
@@ -308,6 +371,7 @@ export function useDeleteReportMutation(reportId: string) {
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-reports"] });
       void queryClient.invalidateQueries({ queryKey: ["incidents-map"] });
+      void queryClient.invalidateQueries({ queryKey: ["recent-reports"] });
     }
   });
 }

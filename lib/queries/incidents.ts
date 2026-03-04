@@ -89,6 +89,13 @@ type MapIncidentFilters = {
   timeRange: "1h" | "6h" | "24h" | "7d";
 };
 
+type RecentReportsFilters = {
+  center: { lat: number; lng: number };
+  radiusMiles: number;
+  categories: string[];
+  timeRange: "1h" | "6h" | "24h" | "7d";
+};
+
 function serializeMapFilterKey(filters: MapIncidentFilters) {
   if (!filters.bbox) return "no-bbox";
 
@@ -99,6 +106,55 @@ function serializeMapFilterKey(filters: MapIncidentFilters) {
       south: fixed(filters.bbox.south),
       east: fixed(filters.bbox.east),
       north: fixed(filters.bbox.north)
+    },
+    categories: [...filters.categories].sort(),
+    timeRange: filters.timeRange
+  });
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function clampLatitude(value: number) {
+  return Math.max(-90, Math.min(90, value));
+}
+
+function normalizeLongitude(value: number) {
+  let normalized = value;
+  while (normalized < -180) normalized += 360;
+  while (normalized > 180) normalized -= 360;
+  return normalized;
+}
+
+function radiusToBbox(center: { lat: number; lng: number }, radiusMiles: number) {
+  const latDelta = radiusMiles / 69;
+  const lngMilesPerDegree = Math.max(Math.cos(toRadians(center.lat)) * 69.172, 0.01);
+  const lngDelta = radiusMiles / lngMilesPerDegree;
+
+  return {
+    west: normalizeLongitude(center.lng - lngDelta),
+    south: clampLatitude(center.lat - latDelta),
+    east: normalizeLongitude(center.lng + lngDelta),
+    north: clampLatitude(center.lat + latDelta)
+  };
+}
+
+function serializeRecentReportsKey(filters: RecentReportsFilters) {
+  const bbox = radiusToBbox(filters.center, filters.radiusMiles);
+  const fixed = (value: number) => value.toFixed(5);
+
+  return JSON.stringify({
+    center: {
+      lat: fixed(filters.center.lat),
+      lng: fixed(filters.center.lng)
+    },
+    radiusMiles: Number(filters.radiusMiles.toFixed(2)),
+    bbox: {
+      west: fixed(bbox.west),
+      south: fixed(bbox.south),
+      east: fixed(bbox.east),
+      north: fixed(bbox.north)
     },
     categories: [...filters.categories].sort(),
     timeRange: filters.timeRange
@@ -152,6 +208,37 @@ export function useIncidentsMapQuery(filters: MapIncidentFilters) {
       return parseJsonOrThrow<IncidentsMapResponse>(response);
     },
     placeholderData: (previous) => previous
+  });
+}
+
+export async function getRecentReports(filters: RecentReportsFilters, signal?: AbortSignal) {
+  const bbox = radiusToBbox(filters.center, filters.radiusMiles);
+  const params = new URLSearchParams();
+  params.set("bbox", `${bbox.west},${bbox.south},${bbox.east},${bbox.north}`);
+  params.set("limit", "500");
+  params.set("timeRange", filters.timeRange);
+  if (filters.categories.length) {
+    params.set("categories", filters.categories.join(","));
+  }
+
+  const response = await fetch(`/api/incidents?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    signal
+  });
+
+  return parseJsonOrThrow<IncidentsMapResponse>(response);
+}
+
+export function useRecentReportsQuery(filters: RecentReportsFilters, enabled = true) {
+  const filterKey = serializeRecentReportsKey(filters);
+
+  return useQuery({
+    queryKey: ["recent-reports", filterKey],
+    enabled,
+    staleTime: 0,
+    refetchOnMount: "always",
+    queryFn: ({ signal }) => getRecentReports(filters, signal)
   });
 }
 
