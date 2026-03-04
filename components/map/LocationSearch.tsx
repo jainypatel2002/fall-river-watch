@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, MapPin, Search } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { type KeyboardEventHandler, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +86,9 @@ export function LocationSearch({
   const [isBestMatchPending, setIsBestMatchPending] = useState(false);
   const blurTimeoutRef = useRef<number | null>(null);
   const lastErrorRef = useRef<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const pathname = usePathname();
+  const previousPathnameRef = useRef(pathname);
   const suggestionsId = useId();
 
   const proximity = getProximity?.() ?? null;
@@ -130,10 +134,27 @@ export function LocationSearch({
 
   useEffect(
     () => () => {
-      if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+      if (blurTimeoutRef.current) {
+        window.clearTimeout(blurTimeoutRef.current);
+        blurTimeoutRef.current = null;
+      }
     },
     []
   );
+
+  useEffect(() => {
+    if (previousPathnameRef.current === pathname) return;
+    previousPathnameRef.current = pathname;
+
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+
+    setIsOpen(false);
+    setActiveIndex(-1);
+    inputRef.current?.blur();
+  }, [pathname]);
 
   const selectSuggestion = useCallback(
     (suggestion: GeocodeFeature) => {
@@ -240,6 +261,7 @@ export function LocationSearch({
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--muted)]" />
         <Input
+          ref={inputRef}
           value={value}
           placeholder={placeholder}
           className="h-11 pl-9 pr-16"
@@ -263,6 +285,7 @@ export function LocationSearch({
             blurTimeoutRef.current = window.setTimeout(() => {
               setIsOpen(false);
               setActiveIndex(-1);
+              blurTimeoutRef.current = null;
             }, 110);
           }}
         />

@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { LocationSearch } from "@/components/map/LocationSearch";
@@ -37,6 +38,7 @@ const DEFAULT_FEED_CENTER = { lat: 41.7001, lng: -71.155 };
 export function FeedShell() {
   useReportsRealtime(true);
   const [feedCenter, setFeedCenter] = useState(DEFAULT_FEED_CENTER);
+  const pathname = usePathname();
 
   const { categories, timeWindow, radiusMiles, verifiedOnly, setSelectedReportId } = useUiStore();
   const searchQuery = useMapSearchStore((state) => state.searchQuery);
@@ -92,6 +94,8 @@ export function FeedShell() {
     setFeedCenter(DEFAULT_FEED_CENTER);
   }, [clearSelectedLocation]);
 
+  const showFeedLocationSearch = pathname === "/feed";
+
   return (
     <section className="mx-auto w-full max-w-5xl space-y-4 pb-20 sm:space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -104,15 +108,17 @@ export function FeedShell() {
         <FiltersSheet />
       </div>
 
-      <LocationSearch
-        value={searchQuery}
-        onChange={setSearchQuery}
-        onSelectLocation={onSelectLocation}
-        onClearSearch={handleClearSearch}
-        getProximity={() => feedCenter}
-        title="Feed Location"
-        showHint={false}
-      />
+      {showFeedLocationSearch ? (
+        <LocationSearch
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onSelectLocation={onSelectLocation}
+          onClearSearch={handleClearSearch}
+          getProximity={() => feedCenter}
+          title="Feed Location"
+          showHint={false}
+        />
+      ) : null}
 
       {incidentsQuery.error ? (
         <div className="flex items-center gap-2 rounded-2xl border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-100">
