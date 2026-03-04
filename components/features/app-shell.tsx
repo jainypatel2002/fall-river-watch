@@ -103,6 +103,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               News
             </Link>
             <Link
+              href="/gigs"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "border border-transparent px-3 text-[color:var(--muted)] hover:border-[var(--border)]"
+              )}
+            >
+              Gigs
+            </Link>
+            <Link
               href="/groups"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
@@ -236,6 +245,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
                   >
                     Groups
+                  </Link>
+                  <Link
+                    href="/gigs"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-11 w-full justify-start px-3 text-sm")}
+                  >
+                    Gigs
                   </Link>
 
                   <Link

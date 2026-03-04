@@ -104,8 +104,11 @@ Weather cache note:
 3. Ensure Storage bucket exists:
    - Bucket name: `report-media`
    - Migration attempts to create it automatically.
-4. Set env vars in `.env.local`.
-5. Install dependencies and run app:
+4. For the gigs feature, ensure private gig media bucket exists:
+   - Bucket name: `gig-media`
+   - Keep it private; media is served through signed URLs (`/api/gigs/media-url`) for authenticated participants only.
+5. Set env vars in `.env.local`.
+6. Install dependencies and run app:
 
 ```bash
 npm install
@@ -165,6 +168,27 @@ where id = '<YOUR-USER-UUID>';
 - Event ownership:
   - Creator can edit/delete
   - `mod`/`admin` can edit/delete any event
+
+### Gigs
+
+- New routes:
+  - `/gigs` browse + filters
+  - `/gigs/new` create
+  - `/gigs/:id` detail + applications + status updates + reviews + flags
+  - `/gigs/:id/edit` edit + media management
+  - `/gigs/my` browse/my posts/my applications tabs
+  - `/gigs/chat/:threadId` private realtime chat after acceptance
+- Data/security:
+  - Migration file: `supabase/migrations/202603040001_gigs.sql`
+  - New tables: `gigs`, `gig_media`, `gig_applications`, `gig_chat_threads`, `gig_chat_messages`, `gig_reviews`, `gig_flags`
+  - RLS enabled for all new tables with creator/participant/staff scoped access
+  - Private storage bucket `gig-media` with path policy `gigs/{gig_id}/{uuid}.{ext}`
+  - Signed URL route (`/api/gigs/media-url`) validates auth + participant access before issuing links
+  - Core RPCs:
+    - `apply_to_gig`
+    - `respond_to_application`
+    - `update_gig_status`
+    - `create_signed_gig_media_url`
 
 ### Groups
 
